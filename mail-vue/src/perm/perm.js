@@ -89,6 +89,16 @@ const routers = {
             menu: true
         }
     }],
+    'signature:query': [{
+        path: '/signatures',
+        name: 'signature',
+        component: () => import('@/views/signature/index.vue'),
+        meta: {
+            title: 'signature',
+            name: 'signature',
+            menu: true
+        }
+    }],
     'reg-key:query': [{
         path: '/invite-code',
         name: 'reg-key',

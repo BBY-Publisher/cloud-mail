@@ -29,8 +29,45 @@ const dbInit = {
 		await this.v2_8DB(c);
 		await this.v2_9DB(c);
 		await this.v3_0DB(c);
+		await this.v3_1DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_1DB(c) {
+		try {
+			await c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS signature (
+					signature_id INTEGER PRIMARY KEY AUTOINCREMENT,
+					domain TEXT NOT NULL,
+					content TEXT NOT NULL DEFAULT '',
+					enabled INTEGER NOT NULL DEFAULT 1,
+					create_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+					update_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+				)
+			`).run();
+		} catch (e) {
+			console.warn(`跳过表：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				CREATE UNIQUE INDEX IF NOT EXISTS idx_signature_domain ON signature(domain COLLATE NOCASE)
+			`).run();
+		} catch (e) {
+			console.warn(`跳过索引：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				INSERT INTO perm (perm_id, name, perm_key, pid, type, sort) VALUES
+				(37,'签名管理', NULL, 0, 1, 5.2),
+				(38,'签名查看', 'signature:query', 37, 2, 0),
+				(39,'签名修改', 'signature:set', 37, 2, 1)
+			`).run();
+		} catch (e) {
+			console.warn(`跳过数据：${e.message}`);
+		}
 	},
 
 	async v3_0DB(c) {

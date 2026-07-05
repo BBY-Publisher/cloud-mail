@@ -58,7 +58,9 @@ const requirePerms = [
 	'/regKey/list',
 	'/regKey/delete',
 	'/regKey/clearNotUse',
-	'/regKey/history'
+	'/regKey/history',
+	'/signature/list',
+	'/signature/set'
 ];
 
 const premKey = {
@@ -87,6 +89,8 @@ const premKey = {
 	'reg-key:add': ['/regKey/add'],
 	'reg-key:query': ['/regKey/list','/regKey/history'],
 	'reg-key:delete': ['/regKey/delete','/regKey/clearNotUse'],
+	'signature:query': ['/signature/list'],
+	'signature:set': ['/signature/set'],
 };
 
 app.use('*', async (c, next) => {

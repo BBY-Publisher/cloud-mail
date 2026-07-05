@@ -99,6 +99,9 @@ const en = {
 		"系统设置": "System Settings",
 		"设置查看": "View Settings",
 		"设置修改": "Change Settings",
+		"签名管理": "Signatures",
+		"签名查看": "View Signatures",
+		"签名修改": "Change Signatures",
 		"发件重置": "Reset Send Count"
 	}
 };

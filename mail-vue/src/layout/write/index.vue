@@ -52,6 +52,9 @@
           <div class="att-clear" @click="clearContent">
             <Icon icon="icon-park-outline:clear-format" width="24" height="24 "/>
           </div>
+          <div class="signature-check">
+            <el-checkbox v-model="form.includeSignature">{{ t('includeSignature') }}</el-checkbox>
+          </div>
           <div class="att-list">
             <div class="att-item" v-for="(item,index) in form.attachments" :key="index">
               <Icon v-bind="getIconByName(item.filename)"/>
@@ -61,7 +64,8 @@
                     width="22" height="22"/>
             </div>
           </div>
-          <div>
+          <div class="send-actions">
+            <el-button @click="openPreview">{{ $t('preview') }}</el-button>
             <el-button type="primary" @click="sendEmail" v-if="form.sendType === 'reply'">{{ $t('reply') }}</el-button>
             <el-button type="primary" @click="sendEmail" v-else-if="form.sendType === 'forward'">{{ $t('forward') }}</el-button>
             <el-button type="primary" @click="sendEmail" v-else>{{ $t('send') }}</el-button>
@@ -90,11 +94,17 @@
         <el-button type="primary" @click="chooseContact">{{t('selectContacts')}}</el-button>
       </div>
     </el-dialog>
+    <el-dialog class="preview-dialog" top="8vh" v-model="previewShow" :title="t('signaturePreview')">
+      <div class="preview-box">
+        <shadowHtml :html="previewHtml"/>
+      </div>
+    </el-dialog>
   </div>
 </template>
 <script setup>
 import tinyEditor from '@/components/tiny-editor/index.vue'
-import {h, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, computed} from "vue";
+import shadowHtml from '@/components/shadow-html/index.vue'
+import {h, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, computed, watch} from "vue";
 import {Icon} from "@iconify/vue";
 import {useUserStore} from "@/store/user.js";
 import {emailSend} from "@/request/email.js";
@@ -114,6 +124,8 @@ import dayjs from "dayjs";
 import {useI18n} from "vue-i18n";
 import router from "@/router/index.js";
 import {ElMessageBox} from "element-plus";
+import {signatureGet} from "@/request/signature.js";
+import {useSignatureStore} from "@/store/signature.js";
 
 defineExpose({
   open,
@@ -126,6 +138,7 @@ const {t} = useI18n()
 const writerStore = useWriterStore();
 const draftStore = userDraftStore()
 const settingStore = useSettingStore()
+const signatureStore = useSignatureStore()
 const emailStore = useEmailStore();
 const accountStore = useAccountStore()
 const editor = ref({})
@@ -137,8 +150,11 @@ let sending = false
 const defValue = ref('')
 const contactsTabRef = ref({})
 const showContacts = ref(false)
+const previewShow = ref(false)
+const previewSignature = ref('')
 const mySelect = ref()
 let selectStatus = false
+let previewSignatureReq = 0
 const backReply = reactive({
   receiveEmail: [],
   subject: '',
@@ -154,6 +170,7 @@ const form = reactive({
   content: '',
   sendType: '',
   text: '',
+  includeSignature: true,
   emailId: 0,
   attachments: [],
   draftId: null,
@@ -162,6 +179,28 @@ const form = reactive({
 const selectRecipientList = ref([])
 
 const contacts = computed(() => writerStore.sendRecipientRecord.map(item => ({email: item})))
+
+const previewHtml = computed(() => {
+  const content = form.content || ''
+  const signature = form.includeSignature && previewSignature.value
+      ? `
+        <div class="cloud-mail-signature" data-cloud-mail-signature="true" style="margin-top:16px;">
+          ${previewSignature.value}
+        </div>
+      `
+      : ''
+
+  return formatImage(`${content}${signature}`)
+})
+
+watch(
+    () => [previewShow.value, form.includeSignature, form.sendEmail, signatureStore.refresh],
+    () => {
+      if (previewShow.value) {
+        refreshPreviewSignature()
+      }
+    }
+)
 
 function openContacts() {
   showContacts.value = true
@@ -263,6 +302,28 @@ function clearContent() {
 
 function delAtt(index) {
   form.attachments.splice(index, 1);
+}
+
+async function openPreview() {
+  form.content = editor.value.getContent();
+  previewShow.value = true;
+  await refreshPreviewSignature();
+}
+
+async function refreshPreviewSignature() {
+  const req = ++previewSignatureReq
+  previewSignature.value = ''
+
+  if (form.includeSignature && form.sendEmail) {
+    try {
+      const signature = await signatureGet(form.sendEmail);
+      if (req !== previewSignatureReq) return
+      previewSignature.value = signature.content || ''
+    } catch (e) {
+      if (req !== previewSignatureReq) return
+      previewSignature.value = ''
+    }
+  }
 }
 
 function chooseFile() {
@@ -413,6 +474,7 @@ function resetForm() {
   form.subject = ''
   form.content = ''
   form.manyType = null
+  form.includeSignature = true
   form.attachments = []
   form.sendType = ''
   form.emailId = 0
@@ -522,6 +584,7 @@ function open() {
 
 function openDraft(draft) {
   Object.assign(form, {...draft})
+  form.includeSignature = draft.includeSignature ?? true
   defValue.value = ''
   setTimeout(() => defValue.value = form.content)
   show.value = true;
@@ -699,7 +762,26 @@ function close() {
 
       .button-item {
         display: grid;
-        grid-template-columns: auto auto 1fr auto;
+        grid-template-columns: auto auto auto 1fr auto;
+        align-items: center;
+
+        @media (max-width: 767px) {
+          grid-template-columns: auto auto 1fr;
+          gap: 8px;
+
+          .att-list {
+            grid-column: 1 / -1;
+            order: 2;
+            padding-left: 0;
+            padding-right: 0;
+          }
+
+          .send-actions {
+            grid-column: 1 / -1;
+            justify-content: flex-end;
+            order: 3;
+          }
+        }
 
         .att-add {
           cursor: pointer;
@@ -708,6 +790,11 @@ function close() {
         .att-clear {
           cursor: pointer;
           margin-left: 10px;
+        }
+
+        .signature-check {
+          margin-left: 12px;
+          white-space: nowrap;
         }
 
         .att-list {
@@ -738,10 +825,25 @@ function close() {
             }
           }
         }
+
+        .send-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          white-space: nowrap;
+        }
       }
     }
   }
 
+}
+
+.preview-box {
+  height: min(620px, calc(82vh - 120px));
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 6px;
+  padding: 12px;
+  overflow: auto;
 }
 
 .email-row {
@@ -757,6 +859,10 @@ function close() {
     margin-right: 20px !important;
     margin-left: 20px !important;
   }
+}
+
+:deep(.preview-dialog) {
+  width: min(860px, calc(100% - 40px)) !important;
 }
 
 .contacts-bottom {

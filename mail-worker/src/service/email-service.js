@@ -22,6 +22,7 @@ import domainUtils from '../utils/domain-uitls';
 import account from "../entity/account";
 import { att } from '../entity/att';
 import telegramService from './telegram-service';
+import signatureService from './signature-service';
 
 const emailService = {
 
@@ -161,12 +162,11 @@ const emailService = {
 			text, //邮件纯文本
 			content, //邮件内容
 			subject, //邮件标题
+			includeSignature = true,
 			attachments = [] //附件
 		} = params;
 
 		const { resendTokens, r2Domain, send, domainList } = await settingService.query(c);
-
-		let { imageDataList, html } = await attService.toImageUrlHtml(c, content);
 
 		//判断是否关闭发件功能
 		if (send === settingConst.send.CLOSE) {
@@ -242,6 +242,18 @@ const emailService = {
 		if (!name) {
 			name = emailUtils.getName(accountRow.email);
 		}
+
+		const signedContent = await this.withSignature(c, {
+			content,
+			text,
+			accountEmail: accountRow.email,
+			includeSignature
+		});
+
+		content = signedContent.content;
+		text = signedContent.text;
+
+		let { imageDataList, html } = await attService.toImageUrlHtml(c, content);
 
 		let emailRow = {
 			messageId: null
@@ -373,6 +385,38 @@ const emailService = {
 		}
 
 		return [ emailResult ];
+	},
+
+	async withSignature(c, params) {
+		let { content = '', text = '', accountEmail, includeSignature } = params;
+
+		if (includeSignature === false || includeSignature === 0 || includeSignature === 'false') {
+			return { content, text };
+		}
+
+		const domain = emailUtils.getDomain(accountEmail);
+		const signatureRow = await signatureService.selectEnabledByDomain(c, domain);
+		if (!signatureRow?.content) {
+			return { content, text };
+		}
+
+		const signatureHtml = `
+			<div class="cloud-mail-signature" data-cloud-mail-signature="true" style="margin-top:16px;">
+				${signatureRow.content}
+			</div>
+		`;
+
+		const signatureText = this.htmlToText(signatureRow.content);
+
+		return {
+			content: `${content || ''}${signatureHtml}`,
+			text: [text, signatureText].filter(Boolean).join('\n\n')
+		};
+	},
+
+	htmlToText(html = '') {
+		const { document } = parseHTML(`<body>${html}</body>`);
+		return document.body.textContent.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim();
 	},
 
 	async sendByCloudflareEmail(c, params) {
