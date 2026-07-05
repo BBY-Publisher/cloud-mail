@@ -34,5 +34,6 @@
 2. 复制到 GitHub Secrets 中的 `CLOUDFLARE_ACCOUNT_ID`
 
 **运行工作流**
-1. 然后在Action页面手动运行工作流，后续同步上游后会自动部署到 Cloudflare Workers。如未配置 `INIT_URL`，则需要手动访问 `https://你的项目域名/api/init/你的jwt_secret` 进行数据库初始化。
-2. 自动同步上游可使用bot或者手动点击Sync Upstream按钮。
+1. 工作流会在 push 到 `main` 分支后自动部署到 Cloudflare Workers，也可以在 Action 页面手动运行。
+2. 部署完成后，工作流会自动访问 `https://你的项目域名/api/init/你的jwt_secret`，执行 D1 数据库初始化和结构迁移。新增表、字段或权限项时，需要把对应迁移逻辑维护在 `mail-worker/src/init/init.js` 中。
+3. 自动同步上游可使用 bot 或者手动点击 Sync Upstream 按钮。

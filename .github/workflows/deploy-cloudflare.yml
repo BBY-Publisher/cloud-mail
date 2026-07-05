@@ -3,9 +3,6 @@ name: 🚀 Deploy cloud-mail to Cloudflare Workers
 on:
   push:
     branches: [ main ]
-    paths:
-      - "mail-worker/**"
-      - "mail-vue/**"
   workflow_dispatch:
 
 jobs:
@@ -240,9 +237,9 @@ jobs:
           echo "worker_url=$WORKER_URL" >> $GITHUB_OUTPUT
           echo "✅ Setup completed."
 
-      - name: ♻️ 初始化数据库 / Initialize database
+      - name: ♻️ 应用D1结构迁移 / Apply D1 schema migrations
         run: |
-          echo "🛠️ Starting database initialization..."
+          echo "🛠️ Applying D1 schema migrations through /api/init..."
           sleep 15
           
           WORKER_URL="${CUSTOM_DOMAIN:+https://$CUSTOM_DOMAIN}"
@@ -257,7 +254,7 @@ jobs:
           RESPONSE_BODY=$(cat response.txt)
 
           if [ "$RESPONSE_BODY" = "success" ]; then
-            echo "✅ Setup completed."
+            echo "✅ D1 schema migrations completed."
           else
             echo "❌ Failed. HTTP: $HTTP_CODE, Response: $RESPONSE_BODY"
             exit 1
