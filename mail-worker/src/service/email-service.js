@@ -23,6 +23,26 @@ import account from "../entity/account";
 import { att } from '../entity/att';
 import telegramService from './telegram-service';
 import signatureService from './signature-service';
+import { Brevo as BrevoSdk } from '@getbrevo/brevo';
+
+const PROVIDER = {
+	CF: 'cf',
+	RESEND: 'resend',
+	BREVO: 'brevo'
+};
+
+function pickProvider(domain, ctx) {
+	const override = ctx.domainProviders && ctx.domainProviders[domain];
+	if (override) {
+		return override;
+	}
+
+	if (ctx.useCloudflareEmail) return PROVIDER.CF;
+	if (ctx.resendToken) return PROVIDER.RESEND;
+	if (ctx.brevoApiKey) return PROVIDER.BREVO;
+
+	return null;
+}
 
 const emailService = {
 
@@ -166,7 +186,8 @@ const emailService = {
 			attachments = [] //附件
 		} = params;
 
-		const { resendTokens, r2Domain, send, domainList } = await settingService.query(c);
+		const { resendTokens, domainProviders, r2Domain, send, domainList } = await settingService.query(c);
+		const brevoApiKey = c.env.brevo_api_key;
 
 		//判断是否关闭发件功能
 		if (send === settingConst.send.CLOSE) {
@@ -233,8 +254,15 @@ const emailService = {
 		const resendToken = resendTokens[domain];
 		const useCloudflareEmail = !!c.env.email;
 
+		const provider = pickProvider(domain, {
+			useCloudflareEmail,
+			resendToken,
+			brevoApiKey,
+			domainProviders
+		});
+
 		//如果接收方存在站外邮箱，又没有发信服务
-		if (!useCloudflareEmail && !resendToken && !allInternal) {
+		if (!allInternal && !provider) {
 			throw new BizError(t('noSendProvider'));
 		}
 
@@ -272,33 +300,27 @@ const emailService = {
 
 		let sendResult = {};
 
-		//存在站外邮箱时，如果配置了 Cloudflare Email Service 就优先使用，否则使用 Resend
-		if (!allInternal) {
+		//存在站外邮箱时，根据 pickProvider 选择具体发送通道
+		if (!allInternal && provider) {
 
-			if (useCloudflareEmail) {
-				sendResult = await this.sendByCloudflareEmail(c, {
-					name,
-					accountEmail: accountRow.email,
-					receiveEmail,
-					subject,
-					text,
-					html,
-					attachments: [...imageDataList, ...attachments],
-					sendType,
-					messageId: emailRow.messageId
-				});
-			} else {
-				sendResult = await this.sendByResend(resendToken, {
-					name,
-					accountEmail: accountRow.email,
-					receiveEmail,
-					subject,
-					text,
-					html,
-					attachments: [...imageDataList, ...attachments],
-					sendType,
-					messageId: emailRow.messageId
-				});
+			const sendParams = {
+				name,
+				accountEmail: accountRow.email,
+				receiveEmail,
+				subject,
+				text,
+				html,
+				attachments: [...imageDataList, ...attachments],
+				sendType,
+				messageId: emailRow.messageId
+			};
+
+			if (provider === PROVIDER.CF) {
+				sendResult = await this.sendByCloudflareEmail(c, sendParams);
+			} else if (provider === PROVIDER.RESEND) {
+				sendResult = await this.sendByResend(resendToken, sendParams);
+			} else if (provider === PROVIDER.BREVO) {
+				sendResult = await this.sendByBrevo(brevoApiKey, sendParams);
 			}
 
 		}
@@ -323,10 +345,11 @@ const emailService = {
 		emailData.content = html;
 		emailData.text = text;
 		emailData.accountId = accountId;
-		emailData.status = useCloudflareEmail ? emailConst.status.DELIVERED : emailConst.status.SENT;
+		emailData.status = provider === PROVIDER.CF ? emailConst.status.DELIVERED : emailConst.status.SENT;
 		emailData.type = emailConst.type.SEND;
 		emailData.userId = userId;
 		emailData.resendEmailId = data?.id;
+		emailData.provider = provider;
 
 		const recipient = [];
 
@@ -477,6 +500,42 @@ const emailService = {
 		return await resend.emails.send(sendForm);
 	},
 
+	async sendByBrevo(brevoApiKey, params) {
+		const client = new BrevoSdk.BrevoClient({ apiKey: brevoApiKey });
+
+		const request = {
+			sender: { name: params.name, email: params.accountEmail },
+			to: params.receiveEmail.map(email => ({ email, name: '' })),
+			subject: params.subject
+		};
+
+		if (params.html) request.htmlContent = params.html;
+		if (params.text) request.textContent = params.text;
+
+		const attachments = await this.toBrevoAttachments(params.attachments);
+		if (attachments.length > 0) request.attachment = attachments;
+
+		if (params.sendType === 'reply' && params.messageId) {
+			request.headers = {
+				'In-Reply-To': params.messageId,
+				'References': params.messageId
+			};
+		}
+
+		try {
+			const response = await client.transactionalEmails.sendTransacEmail(request);
+			return {
+				data: { id: response?.data?.messageId },
+				error: null
+			};
+		} catch (e) {
+			return {
+				data: null,
+				error: { message: e?.body?.message || e?.message || 'Brevo send failed' }
+			};
+		}
+	},
+
 	async toCloudflareAttachments(attachments) {
 		const arrayBufferAttachments = await this.toArrayBufferAttachments(attachments);
 
@@ -509,6 +568,25 @@ const emailService = {
 				...attachment,
 				content,
 				contentType: attachment.contentType || attachment.mimeType || attachment.type || 'application/octet-stream'
+			});
+		}
+
+		return result;
+	},
+
+	// Brevo 的 attachment 数组只接受 { content: base64, name } 两字段,不需要 contentType
+	async toBrevoAttachments(attachments = []) {
+		const result = [];
+
+		for (const attachment of attachments) {
+			const content = await this.toAttachmentBase64(attachment);
+			if (!content) {
+				continue;
+			}
+
+			result.push({
+				content,
+				name: attachment.filename || attachment.name || 'attachment'
 			});
 		}
 
@@ -794,6 +872,14 @@ const emailService = {
 			status: status,
 			message: message
 		}).where(eq(email.resendEmailId, resendEmailId)).returning().get();
+	},
+
+	selectByResendEmailId(c, resendEmailId) {
+		return orm(c).select().from(email).where(eq(email.resendEmailId, resendEmailId)).get();
+	},
+
+	insertFromResend(c, params) {
+		return orm(c).insert(email).values({ ...params }).returning().get();
 	},
 
 	async selectUserEmailCountList(c, userIds, type, del = isDel.NORMAL) {

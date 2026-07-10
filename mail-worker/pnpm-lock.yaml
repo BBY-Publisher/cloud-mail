@@ -13,7 +13,10 @@ importers:
         version: 3.882.0
       '@cloudflare/vite-plugin':
         specifier: 1.6.0
-        version: 1.6.0(rollup@4.50.0)(vite@6.3.5(@types/node@24.3.0))(workerd@1.20250310.0)(wrangler@4.90.0)
+        version: 1.6.0(rollup@4.50.0)(vite@6.3.5(@types/node@24.3.0))(workerd@1.20260507.1)(wrangler@4.90.0)
+      '@getbrevo/brevo':
+        specifier: ^6.0.2
+        version: 6.0.2
       dayjs:
         specifier: ^1.11.13
         version: 1.11.18
@@ -814,6 +817,10 @@ packages:
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
+
+  '@getbrevo/brevo@6.0.2':
+    resolution: {integrity: sha512-yxyacx4wkuWcCbFDdFE3RxklaHSGXEP3d0gZaxPy+9aBquvl4ksr7IQgbRCcF8crx5aRvpStVBLeh5iCbWHJrg==}
+    engines: {node: '>=18.0.0'}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2981,15 +2988,15 @@ snapshots:
     optionalDependencies:
       workerd: 1.20260507.1
 
-  '@cloudflare/unenv-preset@2.3.2(unenv@2.0.0-rc.17)(workerd@1.20250310.0)':
+  '@cloudflare/unenv-preset@2.3.2(unenv@2.0.0-rc.17)(workerd@1.20260507.1)':
     dependencies:
       unenv: 2.0.0-rc.17
     optionalDependencies:
-      workerd: 1.20250310.0
+      workerd: 1.20260507.1
 
-  '@cloudflare/vite-plugin@1.6.0(rollup@4.50.0)(vite@6.3.5(@types/node@24.3.0))(workerd@1.20250310.0)(wrangler@4.90.0)':
+  '@cloudflare/vite-plugin@1.6.0(rollup@4.50.0)(vite@6.3.5(@types/node@24.3.0))(workerd@1.20260507.1)(wrangler@4.90.0)':
     dependencies:
-      '@cloudflare/unenv-preset': 2.3.2(unenv@2.0.0-rc.17)(workerd@1.20250310.0)
+      '@cloudflare/unenv-preset': 2.3.2(unenv@2.0.0-rc.17)(workerd@1.20260507.1)
       '@mjackson/node-fetch-server': 0.6.1
       '@rollup/plugin-replace': 6.0.2(rollup@4.50.0)
       get-port: 7.1.0
@@ -3316,6 +3323,8 @@ snapshots:
     optional: true
 
   '@fastify/busboy@2.1.1': {}
+
+  '@getbrevo/brevo@6.0.2': {}
 
   '@img/colour@1.1.0': {}
 

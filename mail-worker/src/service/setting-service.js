@@ -14,7 +14,8 @@ const settingService = {
 
 	async refresh(c) {
 		const settingRow = await orm(c).select().from(setting).get();
-		settingRow.resendTokens = JSON.parse(settingRow.resendTokens);
+		settingRow.resendTokens = JSON.parse(settingRow.resendTokens || '{}');
+		settingRow.domainProviders = JSON.parse(settingRow.domainProviders || '{}');
 		c.set('setting', settingRow);
 		await c.env.kv.put(KvConst.SETTING, JSON.stringify(settingRow));
 	},
@@ -103,6 +104,7 @@ const settingService = {
 		settingRow.tgBotToken = settingRow.tgBotToken ? `${settingRow.tgBotToken.slice(0, 20)}******` : null;
 		settingRow.hasR2 = !!c.env.r2
 		settingRow.hasCfEmail = !!c.env.email
+		settingRow.hasBrevo = !!c.env.brevo_api_key
 
 		let regVerifyOpen = false
 		let addVerifyOpen = false
@@ -131,6 +133,17 @@ const settingService = {
 			if (!resendTokens[domain]) delete resendTokens[domain];
 		});
 
+		let domainProviders = { ...settingData.domainProviders };
+		if (params.domainProviders && typeof params.domainProviders === 'object') {
+			Object.entries(params.domainProviders).forEach(([domain, provider]) => {
+				if (!provider || provider === 'default') {
+					delete domainProviders[domain];
+				} else {
+					domainProviders[domain] = provider;
+				}
+			});
+		}
+
 		if (Array.isArray(params.emailPrefixFilter)) {
 			params.emailPrefixFilter = params.emailPrefixFilter + '';
 		}
@@ -140,6 +153,7 @@ const settingService = {
 		}
 
 		params.resendTokens = JSON.stringify(resendTokens);
+		params.domainProviders = JSON.stringify(domainProviders);
 		await orm(c).update(setting).set({ ...params }).returning().get();
 		await this.refresh(c);
 	},
