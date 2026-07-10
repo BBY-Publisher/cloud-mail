@@ -12,23 +12,26 @@ jobs:
 
     env:
       NAME: ${{ secrets.NAME || vars.NAME || 'cloud-mail' }}
-      CUSTOM_DOMAIN: ${{ secrets.CUSTOM_DOMAIN || vars.CUSTOM_DOMAIN }}
-      DOMAIN: ${{ secrets.DOMAIN || vars.DOMAIN }}
       ADMIN: ${{ secrets.ADMIN || vars.ADMIN }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
-      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID || vars.D1_DATABASE_ID }}
-      KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID || vars.KV_NAMESPACE_ID }}
-      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || vars.R2_BUCKET_NAME }}
-      PROJECT_LINK: ${{ secrets.PROJECT_LINK || vars.PROJECT_LINK }}
       AI_MODEL: ${{ secrets.AI_MODEL || vars.AI_MODEL || '@cf/meta/llama-3.1-8b-instruct' }}
-      CLOUDFLARE_EMAIL: ${{ secrets.CF_EMAIL || vars.CF_EMAIL || false }}
       ANALYSIS_CACHE: ${{ secrets.ANALYSIS_CACHE || vars.ANALYSIS_CACHE || false }}
+      BREVO_API_KEY: ${{ secrets.BREVO_API_KEY || vars.BREVO_API_KEY }}
+      BREVO_WEBHOOK_SECRET: ${{ secrets.BREVO_WEBHOOK_SECRET || vars.BREVO_WEBHOOK_SECRET }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_EMAIL: ${{ secrets.CF_EMAIL || vars.CF_EMAIL || false }}
+      CUSTOM_DOMAIN: ${{ secrets.CUSTOM_DOMAIN || vars.CUSTOM_DOMAIN }}
+      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID || vars.D1_DATABASE_ID }}
+      DOMAIN: ${{ secrets.DOMAIN || vars.DOMAIN }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
+      KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID || vars.KV_NAMESPACE_ID }}
+      LINUXDO_CALLBACK_URL: ${{ secrets.LINUXDO_CALLBACK_URL || vars.LINUXDO_CALLBACK_URL }}
       LINUXDO_CLIENT_ID: ${{ secrets.LINUXDO_CLIENT_ID || vars.LINUXDO_CLIENT_ID }}
       LINUXDO_CLIENT_SECRET: ${{ secrets.LINUXDO_CLIENT_SECRET || vars.LINUXDO_CLIENT_SECRET }}
-      LINUXDO_CALLBACK_URL: ${{ secrets.LINUXDO_CALLBACK_URL || vars.LINUXDO_CALLBACK_URL }}
       LINUXDO_SWITCH: ${{ secrets.LINUXDO_SWITCH || vars.LINUXDO_SWITCH }}
+      PROJECT_LINK: ${{ secrets.PROJECT_LINK || vars.PROJECT_LINK }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || vars.R2_BUCKET_NAME }}
+      RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET || vars.RESEND_WEBHOOK_SECRET }}
 
 
     outputs:
@@ -94,6 +97,18 @@ jobs:
             echo "::warning:: CUSTOM_DOMAIN variable is not set."
           fi
           
+          if [ -z "$RESEND_WEBHOOK_SECRET" ]; then
+            echo "::warning:: RESEND_WEBHOOK_SECRET variable is not set. Resend webhooks will reject requests."
+          fi
+
+          if [ -z "$BREVO_API_KEY" ]; then
+            echo "::warning:: BREVO_API_KEY variable is not set. Brevo will not be available as a sender."
+          fi
+
+          if [ -z "$BREVO_WEBHOOK_SECRET" ]; then
+            echo "::warning:: BREVO_WEBHOOK_SECRET variable is not set. Brevo webhooks will reject requests."
+          fi
+          
           CONFIG_FILE="wrangler-action.toml"
           
           if [ -z "$R2_BUCKET_NAME" ]; then
@@ -125,6 +140,9 @@ jobs:
           sed -i "s|\"\${DOMAIN}\"|${DOMAIN}|g" "$CONFIG_FILE"
           sed -i "s|\${ADMIN}|${ADMIN}|g" "$CONFIG_FILE"
           sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g" "$CONFIG_FILE"
+          sed -i "s|\${RESEND_WEBHOOK_SECRET}|${RESEND_WEBHOOK_SECRET}|g" "$CONFIG_FILE"
+          sed -i "s|\${BREVO_API_KEY}|${BREVO_API_KEY}|g" "$CONFIG_FILE"
+          sed -i "s|\${BREVO_WEBHOOK_SECRET}|${BREVO_WEBHOOK_SECRET}|g" "$CONFIG_FILE"
           sed -i "s|\${R2_BUCKET_NAME}|${R2_BUCKET_NAME}|g" "$CONFIG_FILE"
           sed -i "s|\${PROJECT_LINK}|${PROJECT_LINK}|g" "$CONFIG_FILE"
           sed -i "s|\${ANALYSIS_CACHE}|${ANALYSIS_CACHE}|g" "$CONFIG_FILE"
@@ -133,7 +151,14 @@ jobs:
           sed -i "s|\${LINUXDO_CLIENT_SECRET}|${LINUXDO_CLIENT_SECRET}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_CALLBACK_URL}|${LINUXDO_CALLBACK_URL}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_SWITCH}|${LINUXDO_SWITCH}|g" "$CONFIG_FILE"
-          
+
+          UNRESOLVED=$(grep -oE '\$\{[A-Z_]+\}' "$CONFIG_FILE" | sort -u || true)
+          if [ -n "$UNRESOLVED" ]; then
+            echo "❌ Unresolved placeholders in $CONFIG_FILE:"
+            echo "$UNRESOLVED"
+            exit 1
+          fi
+
           echo "✅ Environment setup completed."
 
       - name: ⚡ 设置KV数据库 / Set up KV database
