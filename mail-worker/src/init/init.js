@@ -30,6 +30,7 @@ const dbInit = {
 		await this.v2_9DB(c);
 		await this.v3_0DB(c);
 		await this.v3_1DB(c);
+		await this.v3_2DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -67,6 +68,26 @@ const dbInit = {
 			`).run();
 		} catch (e) {
 			console.warn(`跳过数据：${e.message}`);
+		}
+	},
+
+	async v3_2DB(c) {
+		try {
+			await c.env.db.prepare(`ALTER TABLE setting ADD COLUMN domain_providers TEXT NOT NULL DEFAULT '{}';`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`ALTER TABLE email ADD COLUMN provider TEXT;`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_provider ON email(provider);`).run();
+		} catch (e) {
+			console.warn(`跳过索引：${e.message}`);
 		}
 	},
 
