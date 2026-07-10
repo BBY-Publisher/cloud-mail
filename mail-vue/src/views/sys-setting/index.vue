@@ -177,11 +177,33 @@
                 </div>
               </div>
               <div class="setting-item">
-                <div><span>{{ setting.hasCfEmail ? $t('cloudflareEmailSending') : $t('resendToken') }}</span></div>
-                <div v-if="setting.hasCfEmail">
-                  <span>{{ $t('enabled') }}</span>
+                <div><span>{{ $t('domainProvider') }}</span>
+                  <el-tooltip effect="dark" :content="$t('domainProviderDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
                 </div>
-                <div v-else>
+                <div>
+                  <el-button class="opt-button" style="margin-top: 0" @click="showProviderOverrideList = true" size="small"
+                             type="primary">
+                    <Icon icon="ic:round-list" width="18" height="18"/>
+                  </el-button>
+                  <el-button class="opt-button" style="margin-top: 0" @click="openProviderOverrideForm" size="small"
+                             type="primary">
+                    <Icon icon="material-symbols:add-rounded" width="16" height="16"/>
+                  </el-button>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div>
+                  <span>{{ $t('cloudflareEmailSending') }}</span>
+                </div>
+                <div>
+                  <span>{{ setting.hasCfEmail ? $t('enabled') : $t('disabled') }}</span>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('resendToken') }}</span></div>
+                <div>
                   <el-button class="opt-button" style="margin-top: 0" @click="openResendList" size="small"
                              type="primary">
                     <Icon icon="ic:round-list" width="18" height="18"/>
@@ -190,6 +212,17 @@
                              type="primary">
                     <Icon icon="material-symbols:add-rounded" width="16" height="16"/>
                   </el-button>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div>
+                  <span>{{ $t('brevoSender') }}</span>
+                  <el-tooltip effect="dark" :content="$t('brevoSenderDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
+                <div>
+                  <span>{{ setting.hasBrevo ? $t('enabled') : $t('disabled') }}</span>
                 </div>
               </div>
               <div class="setting-item">
@@ -634,6 +667,39 @@
                            :show-overflow-tooltip="true"/>
         </el-table>
       </el-dialog>
+      <el-dialog class="resend-table" v-model="showProviderOverrideList" :title="$t('providerOverrideTitle')" width="480">
+        <el-table :data="providerOverrideList">
+          <el-table-column :min-width="160" property="domain" :label="$t('domain')"/>
+          <el-table-column :min-width="140" property="provider" :label="$t('provider')"/>
+          <el-table-column :width="80" fixed="right" :label="$t('action')">
+            <template #default="{ row }">
+              <el-button size="small" @click="removeProviderOverride(row.domain)">
+                <Icon icon="material-symbols:delete-outline-rounded" width="16" height="16"/>
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-dialog>
+      <el-dialog v-model="providerOverrideFormShow" :title="$t('setProvider')" width="340"
+                 @closed="providerOverrideForm.domain='';providerOverrideForm.provider=''">
+        <form>
+          <el-select style="margin-bottom: 15px" v-model="providerOverrideForm.domain" :placeholder="$t('domain')">
+            <el-option
+                v-for="item in settingStore.domainList"
+                :key="item"
+                :label="item"
+                :value="item"
+            />
+          </el-select>
+          <el-select style="margin-bottom: 15px" v-model="providerOverrideForm.provider" :placeholder="$t('provider')">
+            <el-option key="cf" :label="$t('cloudflareEmailSending')" value="cf" :disabled="!setting.hasCfEmail"/>
+            <el-option key="resend" :label="$t('resendToken')" value="resend"
+                       :disabled="!resendList || resendList.length === 0"/>
+            <el-option key="brevo" :label="$t('brevoSender')" value="brevo" :disabled="!setting.hasBrevo"/>
+          </el-select>
+          <el-button type="primary" :loading="settingLoading" @click="saveProviderOverride">{{ $t('save') }}</el-button>
+        </form>
+      </el-dialog>
       <el-dialog v-model="regVerifyCountShow" :title="$t('rulesVerifyTitle',{count: regVerifyCount})"
                  @closed="regVerifyCount = setting.regVerifyCount">
         <form>
@@ -870,6 +936,12 @@ const resendTokenForm = reactive({
   domain: '',
   token: '',
 })
+const showProviderOverrideList = ref(false)
+const providerOverrideFormShow = ref(false)
+const providerOverrideForm = reactive({
+  domain: '',
+  provider: ''
+})
 const turnstileForm = reactive({
   siteKey: '',
   secretKey: ''
@@ -1009,6 +1081,27 @@ const resendList = computed(() => {
 
   return list;
 });
+
+const providerOverrideList = computed(() => {
+  const map = setting.value.domainProviders || {};
+  return Object.entries(map).map(([domain, provider]) => ({ domain, provider }));
+});
+
+function openProviderOverrideForm() {
+  providerOverrideFormShow.value = true;
+}
+
+function saveProviderOverride() {
+  const domain = providerOverrideForm.domain.slice(1);
+  const provider = providerOverrideForm.provider;
+  if (!domain || !provider) return;
+  editSetting({ domainProviders: { [domain]: provider } });
+  providerOverrideFormShow.value = false;
+}
+
+function removeProviderOverride(domain) {
+  editSetting({ domainProviders: { [domain]: 'default' } });
+}
 
 function getUpdate() {
   if (getUpdateErrorCount > 5 || !getUpdateErrorCount) return
@@ -1419,6 +1512,7 @@ function saveResendToken() {
 function backupSetting() {
   const settingForm = {...setting.value}
   delete settingForm.resendTokens
+  delete settingForm.domainProviders
   delete settingForm.siteKey
   delete settingForm.secretKey
   backup = JSON.stringify(setting.value)
@@ -1443,6 +1537,7 @@ function change(e) {
   delete settingForm.s3SecretKey
   delete settingForm.tgBotToken
   delete settingForm.resendTokens
+  delete settingForm.domainProviders
   editSetting(settingForm, false)
 }
 
@@ -1493,6 +1588,7 @@ function editSetting(settingForm, refreshStatus = true) {
     addS3Show.value = false
     emailPrefixShow.value = false
     aiCodeFilterShow.value = false
+    providerOverrideFormShow.value = false
   }).catch((e) => {
     loginOpacity.value = setting.value.loginOpacity
     setting.value = {...setting.value, ...JSON.parse(backup)}
