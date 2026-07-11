@@ -172,13 +172,6 @@ jobs:
           sed -i "s|\${LINUXDO_CALLBACK_URL}|${LINUXDO_CALLBACK_URL}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_SWITCH}|${LINUXDO_SWITCH}|g" "$CONFIG_FILE"
 
-          UNRESOLVED=$(grep -oE '\$\{[A-Z_]+\}' "$CONFIG_FILE" | sort -u || true)
-          if [ -n "$UNRESOLVED" ]; then
-            echo "❌ Unresolved placeholders in $CONFIG_FILE:"
-            echo "$UNRESOLVED"
-            exit 1
-          fi
-
           echo "✅ Environment setup completed."
 
       - name: ⚡ 设置KV数据库 / Set up KV database
@@ -262,6 +255,15 @@ jobs:
         working-directory: ./mail-worker
         run: |
           echo "🚀 Starting deployment..."
+
+          CONFIG_FILE="wrangler-action.toml"
+          UNRESOLVED=$(grep -oE '\$\{[A-Z_]+\}' "$CONFIG_FILE" | sort -u || true)
+          if [ -n "$UNRESOLVED" ]; then
+            echo "❌ Unresolved placeholders in $CONFIG_FILE:"
+            echo "$UNRESOLVED"
+            exit 1
+          fi
+
           pnpm wrangler deploy -c wrangler-action.toml 2>&1 \
             | tee deploy.log \
             | grep -v "https://.*\.workers\.dev" \
