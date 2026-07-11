@@ -505,7 +505,7 @@ const emailService = {
 
 		const request = {
 			sender: { name: params.name, email: params.accountEmail },
-			to: params.receiveEmail.map(email => ({ email, name: '' })),
+			to: params.receiveEmail.map(email => ({ email })),
 			subject: params.subject
 		};
 
