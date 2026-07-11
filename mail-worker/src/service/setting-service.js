@@ -16,6 +16,7 @@ const settingService = {
 		const settingRow = await orm(c).select().from(setting).get();
 		settingRow.resendTokens = JSON.parse(settingRow.resendTokens || '{}');
 		settingRow.domainProviders = JSON.parse(settingRow.domainProviders || '{}');
+		settingRow.managedDomains = JSON.parse(settingRow.managedDomains || '[]');
 		c.set('setting', settingRow);
 		await c.env.kv.put(KvConst.SETTING, JSON.stringify(settingRow));
 	},
@@ -32,22 +33,19 @@ const settingService = {
 			throw new BizError('数据库未初始化 Database not initialized.');
 		}
 
-		let domainList = c.env.domain;
+		const managedDomains = Array.isArray(setting.managedDomains) ? setting.managedDomains : [];
 
-		if (typeof domainList === 'string') {
-			try {
-				domainList = JSON.parse(domainList)
-			} catch (error) {
-				throw new BizError(t('notJsonDomain'));
-			}
-		}
-
-		if (!c.env.domain) {
+		if (managedDomains.length === 0) {
 			throw new BizError(t('noDomainVariable'));
 		}
 
-		domainList = domainList.map(item => '@' + item);
-		setting.domainList = domainList;
+		setting.domainList = managedDomains.map(item => '@' + item);
+
+		if (!setting.adminEmail) {
+			throw new BizError(t('noAdminVariable'));
+		}
+
+		setting.adminEmail = String(setting.adminEmail).toLowerCase();
 
 
 		let linuxdoSwitch = c.env.linuxdo_switch;
@@ -142,6 +140,18 @@ const settingService = {
 					domainProviders[domain] = provider;
 				}
 			});
+		}
+
+		if (Array.isArray(params.managedDomains)) {
+			params.managedDomains = JSON.stringify(
+				params.managedDomains
+					.map(d => String(d).trim().replace(/^@/, '').toLowerCase())
+					.filter(Boolean)
+			);
+		}
+
+		if (typeof params.adminEmail === 'string') {
+			params.adminEmail = params.adminEmail.trim().toLowerCase();
 		}
 
 		if (Array.isArray(params.emailPrefixFilter)) {

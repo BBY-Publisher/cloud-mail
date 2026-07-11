@@ -31,6 +31,7 @@ const dbInit = {
 		await this.v3_0DB(c);
 		await this.v3_1DB(c);
 		await this.v3_2DB(c);
+		await this.v3_3DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -88,6 +89,43 @@ const dbInit = {
 			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_provider ON email(provider);`).run();
 		} catch (e) {
 			console.warn(`跳过索引：${e.message}`);
+		}
+	},
+
+	async v3_3DB(c) {
+		try {
+			await c.env.db.prepare(`ALTER TABLE setting ADD COLUMN managed_domains TEXT NOT NULL DEFAULT '[]';`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`ALTER TABLE setting ADD COLUMN admin_email TEXT NOT NULL DEFAULT '';`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+
+		// Seed managed_domains from env. Only writes when the row is still at default
+		// '[]', so this is a one-time copy — once an admin saves through the UI,
+		// env changes will no longer affect runtime.
+		try {
+			let envDomains = c.env.domain;
+			if (typeof envDomains === 'string') {
+				try { envDomains = JSON.parse(envDomains); } catch (_) { envDomains = null; }
+			}
+			if (Array.isArray(envDomains) && envDomains.length > 0) {
+				await c.env.db.prepare(`UPDATE setting SET managed_domains = ? WHERE managed_domains = '[]';`).bind(JSON.stringify(envDomains)).run();
+			}
+		} catch (e) {
+			console.warn(`跳过 managed_domains 初始化：${e.message}`);
+		}
+
+		try {
+			if (c.env.admin) {
+				await c.env.db.prepare(`UPDATE setting SET admin_email = ? WHERE admin_email = '';`).bind(String(c.env.admin)).run();
+			}
+		} catch (e) {
+			console.warn(`跳过 admin_email 初始化：${e.message}`);
 		}
 	},
 
