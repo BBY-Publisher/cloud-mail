@@ -111,7 +111,7 @@ const resendService = {
 		const webhookSecret = c.env.resend_webhook_secret;
 
 		if (!webhookSecret) {
-			throw new BizError('RESEND_WEBHOOK_SECRET 未配置', 500);
+			throw new BizError('Resend webhook is disabled: RESEND_WEBHOOK_SECRET is not configured', 503);
 		}
 
 		try {

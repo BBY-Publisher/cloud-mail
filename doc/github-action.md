@@ -17,9 +17,9 @@
 | `DOMAIN`                |  ✅  | 您要用于邮件服务的域名（例如 `["xx.xx"]，多域名用,分隔`）        |
 | `ADMIN`                 |  ✅  | 您的管理员邮箱地址（例如 `admin@example.com`）      |
 | `JWT_SECRET`            |  ✅  | 用于生成和验证 JWT 的随机长字符串                     |
-| `RESEND_WEBHOOK_SECRET` |  ❌  | Resend Webhook 的 Signing Secret；配置后 `/webhooks` 才会接收 Resend 事件 |
+| `RESEND_WEBHOOK_SECRET` |  ❌  | Resend Webhook 的 Signing Secret；未配置时 `/webhooks` 会拒绝所有请求（返回 503），配置后才接收 Resend 事件 |
 | `BREVO_API_KEY` |  ❌  | Brevo 全局 API Key（`xkeysib-...`）；配置后才可选用 Brevo 作为发件通道 |
-| `BREVO_WEBHOOK_SECRET` |  ❌  | Brevo Webhook 的 Signing Secret（HMAC key 或 query secret）；配置后 `/webhooks/brevo` 才会接收 Brevo 事件 |
+| `BREVO_WEBHOOK_SECRET` |  ❌  | Brevo Webhook 的 Signing Secret（HMAC key 或 query secret）；未配置时 `/webhooks/brevo` 会拒绝所有请求（返回 503），配置后才接收 Brevo 事件 |
 | `INIT_URL`              |  ❌  | （可选）部署后用于初始化数据库的 Worker URL（格式参考下述手动初始化）           |
 
 ---

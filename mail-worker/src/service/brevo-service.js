@@ -125,7 +125,7 @@ const brevoService = {
 		const secret = c.env.brevo_webhook_secret;
 
 		if (!secret) {
-			throw new BizError('BREVO_WEBHOOK_SECRET 未配置', 500);
+			throw new BizError('Brevo webhook is disabled: BREVO_WEBHOOK_SECRET is not configured', 503);
 		}
 
 		if (signature) {
