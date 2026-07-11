@@ -33,13 +33,26 @@ const settingService = {
 			throw new BizError('数据库未初始化 Database not initialized.');
 		}
 
-		const managedDomains = Array.isArray(setting.managedDomains) ? setting.managedDomains : [];
+		let managedDomains = Array.isArray(setting.managedDomains) ? setting.managedDomains : [];
 
 		if (managedDomains.length === 0) {
-			throw new BizError(t('noDomainVariable'));
+			const envDomains = c.env.domain;
+			if (typeof envDomains === 'string') {
+				try { managedDomains = JSON.parse(envDomains); } catch (_) { managedDomains = []; }
+			} else if (Array.isArray(envDomains)) {
+				managedDomains = envDomains;
+			}
+
+			if (!Array.isArray(managedDomains) || managedDomains.length === 0) {
+				throw new BizError(t('noDomainVariable'));
+			}
 		}
 
 		setting.domainList = managedDomains.map(item => '@' + item);
+
+		if (!setting.adminEmail && c.env.admin) {
+			setting.adminEmail = c.env.admin;
+		}
 
 		if (!setting.adminEmail) {
 			throw new BizError(t('noAdminVariable'));
