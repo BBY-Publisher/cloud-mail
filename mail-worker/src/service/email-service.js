@@ -284,7 +284,8 @@ const emailService = {
 		let { imageDataList, html } = await attService.toImageUrlHtml(c, content);
 
 		let emailRow = {
-			messageId: null
+			messageId: null,
+			relation: ''
 		};
 
 		//如果是回复邮件
@@ -297,6 +298,11 @@ const emailService = {
 			}
 
 		}
+
+		//构建完整的 References 链 (RFC 5322): 父级链 + 父级 messageId
+		const parentChain = emailRow.relation ? emailRow.relation.trim() : '';
+		const references = (parentChain ? `${parentChain} ` : '') + (emailRow.messageId || '').trim();
+		const referencesValue = references.trim();
 
 		let sendResult = {};
 
@@ -312,7 +318,8 @@ const emailService = {
 				html,
 				attachments: [...imageDataList, ...attachments],
 				sendType,
-				messageId: emailRow.messageId
+				messageId: emailRow.messageId,
+				references: referencesValue
 			};
 
 			if (provider === PROVIDER.CF) {
@@ -361,7 +368,7 @@ const emailService = {
 
 		if (sendType === 'reply') {
 			emailData.inReplyTo = emailRow.messageId;
-			emailData.relation = emailRow.messageId;
+			emailData.relation = referencesValue;
 		}
 
 		//如果权限有发送次数增加用户发送次数
@@ -423,17 +430,42 @@ const emailService = {
 			return { content, text };
 		}
 
-		const signatureHtml = `
-			<div class="cloud-mail-signature" data-cloud-mail-signature="true" style="margin-top:16px;">
-				${signatureRow.content}
-			</div>
-		`;
+		const signatureHtml =
+			`<div class="cmq-signature-sep" data-cmq-signature-sep="true">-- </div>` +
+			`<div class="cmq-signature" data-cmq-signature="true">${signatureRow.content}</div>`;
 
 		const signatureText = this.htmlToText(signatureRow.content);
 
+		const replySepPattern = /<blockquote\b[^>]*class="[^"]*\bcmq-reply-quote\b[^"]*"[^>]*>/i;
+		const match = content.match(replySepPattern);
+
+		if (match) {
+			const idx = match.index;
+			const head = content.slice(0, idx);
+			const tail = content.slice(idx);
+			const tailText = this.htmlToText(tail);
+
+			const textParts = [];
+			if (text) textParts.push(text.trim());
+			textParts.push('-- ');
+			textParts.push(signatureText);
+			textParts.push('');
+			if (tailText) textParts.push(tailText);
+
+			const combinedText = textParts
+				.filter(part => part !== null && part !== undefined && part !== '')
+				.join('\n')
+				.replace(/\n{3,}/g, '\n\n');
+
+			return {
+				content: `${head}${signatureHtml}${tail}`,
+				text: combinedText
+			};
+		}
+
 		return {
 			content: `${content || ''}${signatureHtml}`,
-			text: [text, signatureText].filter(Boolean).join('\n\n')
+			text: [text, '-- ', signatureText].filter(Boolean).join('\n')
 		};
 	},
 
@@ -464,9 +496,11 @@ const emailService = {
 
 		if (params.sendType === 'reply' && params.messageId) {
 			sendForm.headers = {
-				'in-reply-to': params.messageId,
-				'references': params.messageId
+				'in-reply-to': params.messageId
 			};
+			if (params.references) {
+				sendForm.headers.references = params.references;
+			}
 		}
 
 		const result = await c.env.email.send(sendForm);
@@ -490,11 +524,13 @@ const emailService = {
 			attachments: await this.toResendAttachments(params.attachments)
 		};
 
-		if (params.sendType === 'reply') {
+		if (params.sendType === 'reply' && params.messageId) {
 			sendForm.headers = {
-				'in-reply-to': params.messageId,
-				'references': params.messageId
+				'in-reply-to': params.messageId
 			};
+			if (params.references) {
+				sendForm.headers.references = params.references;
+			}
 		}
 
 		return await resend.emails.send(sendForm);
@@ -525,9 +561,11 @@ const emailService = {
 
 		if (params.sendType === 'reply' && params.messageId) {
 			request.headers = {
-				'In-Reply-To': params.messageId,
-				'References': params.messageId
+				'In-Reply-To': params.messageId
 			};
+			if (params.references) {
+				request.headers.References = params.references;
+			}
 		}
 
 		try {
