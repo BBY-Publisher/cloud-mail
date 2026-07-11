@@ -51,6 +51,16 @@ const routes = [
                     menu: true
                 }
             },
+            {
+                path: '/webhook-event',
+                name: 'webhook-event',
+                component: () => import('@/views/webhook-event/index.vue'),
+                meta: {
+                    title: 'webhookEvent',
+                    name: 'webhook-event',
+                    menu: false
+                }
+            },
         ]
 
     },

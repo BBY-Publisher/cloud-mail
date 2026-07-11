@@ -356,7 +356,14 @@ const en = {
     searchUser: 'Search by user',
     searchEmail: 'Search by Email',
     searchSender: 'Search by Sender',
-    userEmail: 'Email Address'
+    userEmail: 'Email Address',
+    webhookEvent: 'Webhook Events',
+    webhookEventClear: 'Clear Events',
+    webhookEventClearConfirm: 'Confirm clearing all webhook events?',
+    eventType: 'Event Type',
+    payload: 'Payload',
+    linkedEmail: 'Linked Email',
+    webhookEventEmpty: 'No webhook events yet'
 }
 
 export default en

@@ -4,6 +4,7 @@ import BizError from '../error/biz-error';
 import settingService from './setting-service';
 import accountService from './account-service';
 import emailUtils from '../utils/email-utils';
+import webhookEventService from './webhook-event-service';
 import { Resend } from 'resend';
 
 const statusEventMap = {
@@ -99,6 +100,26 @@ const resendService = {
 		}
 
 		const statusParams = buildStatusParams(body);
+
+		try {
+			const recipient = Array.isArray(body.data?.to)
+				? body.data.to.join(', ')
+				: (body.data?.to || null);
+
+			await webhookEventService.record(c, {
+				provider: 'resend',
+				eventType: body.type,
+				resendEmailId,
+				messageId: body.data?.message_id || null,
+				status: statusParams.status,
+				emailId: emailRow?.emailId || null,
+				recipient,
+				reason: statusParams.message || null,
+				payload: body
+			});
+		} catch (e) {
+			console.error('webhook event record failed (resend):', e?.message || e);
+		}
 
 		if (statusParams.status !== undefined) {
 			await emailService.updateEmailStatus(c, statusParams);

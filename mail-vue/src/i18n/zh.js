@@ -356,6 +356,13 @@ const zh = {
     searchUser: '搜索用户',
     searchEmail: '搜索邮箱',
     searchSender: '搜索发件人',
-    userEmail: '用户邮箱'
+    userEmail: '用户邮箱',
+    webhookEvent: 'Webhook 事件',
+    webhookEventClear: '清空事件',
+    webhookEventClearConfirm: '确认清空所有 Webhook 事件吗？',
+    eventType: '事件类型',
+    payload: '原始数据',
+    linkedEmail: '关联邮件',
+    webhookEventEmpty: '暂无事件'
 }
 export default zh

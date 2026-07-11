@@ -3,6 +3,7 @@ import { emailConst } from '../const/entity-const';
 import BizError from '../error/biz-error';
 import accountService from './account-service';
 import emailUtils from '../utils/email-utils';
+import webhookEventService from './webhook-event-service';
 import { BrevoClient } from '@getbrevo/brevo';
 
 const statusEventMap = {
@@ -113,6 +114,22 @@ const brevoService = {
 		}
 
 		const statusParams = buildStatusParams(body);
+
+		try {
+			await webhookEventService.record(c, {
+				provider: 'brevo',
+				eventType: body.event,
+				resendEmailId: messageId,
+				messageId: body.messageId || null,
+				status: statusParams.status,
+				emailId: emailRow?.emailId || null,
+				recipient: body.email || null,
+				reason: statusParams.message || null,
+				payload: body
+			});
+		} catch (e) {
+			console.error('webhook event record failed (brevo):', e?.message || e);
+		}
 
 		if (statusParams.status !== undefined) {
 			await emailService.updateEmailStatus(c, statusParams);

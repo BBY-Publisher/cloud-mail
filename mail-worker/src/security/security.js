@@ -61,7 +61,9 @@ const requirePerms = [
 	'/regKey/clearNotUse',
 	'/regKey/history',
 	'/signature/list',
-	'/signature/set'
+	'/signature/set',
+	'/webhookEvent/list',
+	'/webhookEvent/clear'
 ];
 
 const premKey = {
@@ -92,6 +94,9 @@ const premKey = {
 	'reg-key:delete': ['/regKey/delete','/regKey/clearNotUse'],
 	'signature:query': ['/signature/list'],
 	'signature:set': ['/signature/set'],
+	'webhook-event:query': ['/webhookEvent/list'],
+	'webhook-event:clear': ['/webhookEvent/clear', '/webhookEvent/list'],
+	'all-email:query': ['/allEmail/list','/allEmail/latest','/allEmail/get'],
 };
 
 app.use('*', async (c, next) => {

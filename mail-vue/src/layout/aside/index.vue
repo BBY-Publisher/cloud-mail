@@ -31,7 +31,7 @@
           <Icon icon="fluent:settings-48-regular" width="20" height="20" />
           <span class="menu-name" style="margin-left: 21px">{{$t('settings')}}</span>
         </el-menu-item>
-        <div class="manage-title" v-perm="['all-email:query','user:query','role:query','setting:query','analysis:query','reg-key:query','signature:query']">
+        <div class="manage-title" v-perm="['all-email:query','user:query','role:query','setting:query','analysis:query','reg-key:query','signature:query','webhook-event:query']">
           <div>{{$t('manage')}}</div>
         </div>
         <el-menu-item @click="router.push({name: 'analysis'})" index="analysis" v-perm="'analysis:query'"
@@ -63,6 +63,11 @@
                       :class="route.meta.name === 'signature' ? 'choose-item' : ''">
           <Icon icon="fluent:signature-32-regular" width="22" height="22" />
           <span class="menu-name" style="margin-left: 20px">{{$t('signature')}}</span>
+        </el-menu-item>
+        <el-menu-item @click="router.push({name: 'webhook-event'})" index="webhook-event" v-perm="'webhook-event:query'"
+                      :class="route.meta.name === 'webhook-event' ? 'choose-item' : ''">
+          <Icon icon="fluent:webhook-20-regular" width="22" height="22" />
+          <span class="menu-name" style="margin-left: 20px">{{$t('webhookEvent')}}</span>
         </el-menu-item>
         <el-menu-item @click="router.push({name: 'sys-setting'})" index="sys-setting" v-perm="'setting:query'"
                       :class="route.meta.name === 'sys-setting' ? 'choose-item' : ''">

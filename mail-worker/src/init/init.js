@@ -32,6 +32,7 @@ const dbInit = {
 		await this.v3_1DB(c);
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
+		await this.v3_4DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -126,6 +127,41 @@ const dbInit = {
 			}
 		} catch (e) {
 			console.warn(`跳过 admin_email 初始化：${e.message}`);
+		}
+	},
+
+	async v3_4DB(c) {
+		try {
+			await c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS webhook_event (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					provider TEXT NOT NULL,
+					event_type TEXT NOT NULL,
+					resend_email_id TEXT,
+					message_id TEXT,
+					status INTEGER,
+					email_id INTEGER,
+					recipient TEXT,
+					reason TEXT,
+					payload TEXT NOT NULL,
+					create_time TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					is_del INTEGER NOT NULL DEFAULT 0
+				)
+			`).run();
+		} catch (e) {
+			console.warn(`跳过表 webhook_event：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_webhook_resend_email_id ON webhook_event(resend_email_id);`).run();
+		} catch (e) {
+			console.warn(`跳过索引 webhook_event.resend_email_id：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_webhook_create_time ON webhook_event(create_time);`).run();
+		} catch (e) {
+			console.warn(`跳过索引 webhook_event.create_time：${e.message}`);
 		}
 	},
 
