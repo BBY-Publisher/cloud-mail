@@ -237,6 +237,37 @@
             </div>
           </div>
 
+          <!-- Managed Domains & Admin Card -->
+          <div class="settings-card">
+            <div class="card-title">{{ $t('managedDomainsTitle') }}</div>
+            <div class="card-content">
+              <div class="setting-item">
+                <div>
+                  <span>{{ $t('managedDomains') }}</span>
+                  <el-tooltip effect="dark" :content="$t('managedDomainsDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <el-input-tag v-model="setting.managedDomains" @change="changeManagedDomains"
+                                :placeholder="'example.com'" style="width: 100%;"/>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div>
+                  <span>{{ $t('adminEmail') }}</span>
+                  <el-tooltip effect="dark" :content="$t('adminEmailDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <el-input v-model="setting.adminEmail" @blur="changeAdminEmail"
+                            :placeholder="'admin@example.com'"/>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Object Storage Card -->
           <div class="settings-card">
             <div class="card-title">{{ $t('oss') }}</div>
@@ -1539,6 +1570,22 @@ function change(e) {
   delete settingForm.resendTokens
   delete settingForm.domainProviders
   editSetting(settingForm, false)
+}
+
+function changeManagedDomains(value) {
+  if (!settingReady.value) return
+  const normalized = (value || [])
+    .map(d => String(d).trim().replace(/^@/, '').toLowerCase())
+    .filter(Boolean)
+  setting.value.managedDomains = normalized
+  editSetting({ managedDomains: normalized }, false)
+}
+
+function changeAdminEmail() {
+  if (!settingReady.value) return
+  const value = String(setting.value.adminEmail || '').trim().toLowerCase()
+  setting.value.adminEmail = value
+  editSetting({ adminEmail: value }, false)
 }
 
 function changeField(key, value) {
