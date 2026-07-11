@@ -3,7 +3,7 @@ import { emailConst } from '../const/entity-const';
 import BizError from '../error/biz-error';
 import accountService from './account-service';
 import emailUtils from '../utils/email-utils';
-import { Brevo as BrevoSdk } from '@getbrevo/brevo';
+import { BrevoClient } from '@getbrevo/brevo';
 
 const statusEventMap = {
 	request: emailConst.status.SENT,
@@ -161,7 +161,7 @@ const brevoService = {
 			throw new BizError('BREVO_API_KEY 未配置', 500);
 		}
 
-		const client = new BrevoSdk.BrevoClient({ apiKey });
+		const client = new BrevoClient({ apiKey });
 
 		try {
 			const response = await client.transactionalEmails.getTransacEmailContent({ uuid: messageId });

@@ -23,7 +23,7 @@ import account from "../entity/account";
 import { att } from '../entity/att';
 import telegramService from './telegram-service';
 import signatureService from './signature-service';
-import { Brevo as BrevoSdk } from '@getbrevo/brevo';
+import { BrevoClient } from '@getbrevo/brevo';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -501,7 +501,7 @@ const emailService = {
 	},
 
 	async sendByBrevo(brevoApiKey, params) {
-		const client = new BrevoSdk.BrevoClient({ apiKey: brevoApiKey });
+		const client = new BrevoClient({ apiKey: brevoApiKey });
 
 		const request = {
 			sender: { name: params.name, email: params.accountEmail },
