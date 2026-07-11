@@ -14,6 +14,7 @@ import roleService from './role-service';
 import emailUtils from '../utils/email-utils';
 import saltHashUtils from '../utils/crypto-utils';
 import constant from '../const/constant';
+import settingService from './setting-service';
 import { t } from '../i18n/i18n'
 import reqUtils from '../utils/req-utils';
 import {oauth} from "../entity/oauth";
@@ -29,11 +30,13 @@ const userService = {
 			throw new BizError(t('authExpired'), 401);
 		}
 
-		const [account, roleRow, permKeys] = await Promise.all([
+		const [account, roleRow, setting] = await Promise.all([
 			accountService.selectByEmailIncludeDel(c, userRow.email),
 			roleService.selectById(c, userRow.type),
-			userRow.email === c.env.admin ? Promise.resolve(['*']) : permService.userPermKeys(c, userId)
+			settingService.query(c)
 		]);
+		const isAdmin = userRow.email === setting.adminEmail;
+		const permKeys = isAdmin ? ['*'] : await permService.userPermKeys(c, userId);
 
 		const user = {};
 		user.userId = userRow.userId;
@@ -45,7 +48,7 @@ const userService = {
 		user.role = roleRow;
 		user.type = userRow.type;
 
-		if (c.env.admin === userRow.email) {
+		if (isAdmin) {
 			user.role = constant.ADMIN_ROLE
 			user.type = 0;
 		}
@@ -165,15 +168,17 @@ const userService = {
 
 		const types = [...new Set(list.map(user => user.type))];
 
-		const [emailCounts, delEmailCounts, sendCounts, delSendCounts, accountCounts, delAccountCounts, roleList] = await Promise.all([
+		const [emailCounts, delEmailCounts, sendCounts, delSendCounts, accountCounts, delAccountCounts, roleList, setting] = await Promise.all([
 			emailService.selectUserEmailCountList(c, userIds, emailConst.type.RECEIVE),
 			emailService.selectUserEmailCountList(c, userIds, emailConst.type.RECEIVE, isDel.DELETE),
 			emailService.selectUserEmailCountList(c, userIds, emailConst.type.SEND),
 			emailService.selectUserEmailCountList(c, userIds, emailConst.type.SEND, isDel.DELETE),
 			accountService.selectUserAccountCountList(c, userIds),
 			accountService.selectUserAccountCountList(c, userIds, isDel.DELETE),
-			roleService.selectByIdsHasPermKey(c, types,'email:send')
+			roleService.selectByIdsHasPermKey(c, types,'email:send'),
+			settingService.query(c)
 		]);
+		const adminEmail = setting.adminEmail;
 
 		const receiveMap = Object.fromEntries(emailCounts.map(item => [item.userId, item.count]));
 		const sendMap = Object.fromEntries(sendCounts.map(item => [item.userId, item.count]));
@@ -206,7 +211,7 @@ const userService = {
 				sendAction.hasPerm = false;
 			}
 
-			if (user.email === c.env.admin) {
+			if (user.email === adminEmail) {
 				sendAction.sendType = constant.ADMIN_ROLE.sendType;
 				sendAction.sendCount = constant.ADMIN_ROLE.sendCount;
 				sendAction.hasPerm = true;
@@ -305,8 +310,9 @@ const userService = {
 	async add(c, params) {
 
 		const { email, type, password } = params;
+		const { domainList } = await settingService.query(c);
 
-		if (!c.env.domain.includes(emailUtils.getDomain(email))) {
+		if (!domainList.includes('@' + emailUtils.getDomain(email))) {
 			throw new BizError(t('notEmailDomain'));
 		}
 

@@ -186,7 +186,7 @@ const emailService = {
 			attachments = [] //附件
 		} = params;
 
-		const { resendTokens, domainProviders, r2Domain, send, domainList } = await settingService.query(c);
+		const { resendTokens, domainProviders, r2Domain, send, domainList, adminEmail } = await settingService.query(c);
 		const brevoApiKey = c.env.brevo_api_key;
 
 		//判断是否关闭发件功能
@@ -203,7 +203,7 @@ const emailService = {
 			return domainList.includes(domain);
 		});
 
-		if (c.env.admin !== userRow.email) {
+		if (adminEmail !== userRow.email) {
 
 			//发件被禁用
 			if (roleRow.sendType === 'ban') {
@@ -218,7 +218,7 @@ const emailService = {
 		}
 
 		//如果不是管理员，权限设置了发送次数
-		if (c.env.admin !== userRow.email && roleRow.sendCount) {
+		if (adminEmail !== userRow.email && roleRow.sendCount) {
 
 			if (userRow.sendCount >= roleRow.sendCount) {
 				if (roleRow.sendType === 'day') throw new BizError(t('daySendLimit'), 403);
@@ -242,7 +242,7 @@ const emailService = {
 			throw new BizError(t('sendEmailNotCurUser'));
 		}
 
-		if (c.env.admin !== userRow.email) {
+		if (adminEmail !== userRow.email) {
 			//用户没有这个域名的使用权限
 			if(!roleService.hasAvailDomainPerm(roleRow.availDomain, accountRow.email)) {
 				throw new BizError(t('noDomainPermSend'),403)
@@ -673,7 +673,7 @@ const emailService = {
 	//处理站内邮件发送
 	async HandleOnSiteEmail(c, receiveEmail, sendEmailData, attList) {
 
-		const { noRecipient  } = await settingService.query(c);
+		const { noRecipient, adminEmail } = await settingService.query(c);
 
 		//查询所有收件人账号信息
 		let accountList = await orm(c).select().from(account).where(inArray(account.email, receiveEmail)).all();
@@ -711,7 +711,7 @@ const emailService = {
 				let { banEmail, availDomain } = roleRow;
 
 				//如果收件人没有这个域名的使用权限和有邮件拦截，就把邮件改为拒收状态
-				if (email !== c.env.admin) {
+				if (email !== adminEmail) {
 
 					if (!roleService.hasAvailDomainPerm(availDomain, email)) {
 						emailValues.status = emailConst.status.BOUNCED;

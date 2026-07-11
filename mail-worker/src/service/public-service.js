@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import { isDel, roleConst } from '../const/entity-const';
 import email from '../entity/email';
 import userService from './user-service';
+import settingService from './setting-service';
 import KvConst from '../const/kv-const';
 
 const publicService = {
@@ -99,12 +100,14 @@ const publicService = {
 
 		if (list.length === 0) return;
 
+		const { domainList } = await settingService.query(c);
+
 		for (const emailRow of list) {
 			if (!verifyUtils.isEmail(emailRow.email)) {
 				throw new BizError(t('notEmail'));
 			}
 
-			if (!c.env.domain.includes(emailUtils.getDomain(emailRow.email))) {
+			if (!domainList.includes('@' + emailUtils.getDomain(emailRow.email))) {
 				throw new BizError(t('notEmailDomain'));
 			}
 
@@ -176,8 +179,9 @@ const publicService = {
 		const { email, password } = params
 
 		const userRow = await userService.selectByEmailIncludeDel(c, email);
+		const { adminEmail } = await settingService.query(c);
 
-		if (email !== c.env.admin) {
+		if (email !== adminEmail) {
 			throw new BizError(t('notAdmin'));
 		}
 

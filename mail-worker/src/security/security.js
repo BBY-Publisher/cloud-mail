@@ -5,6 +5,7 @@ import KvConst from '../const/kv-const';
 import dayjs from 'dayjs';
 import userService from '../service/user-service';
 import permService from '../service/perm-service';
+import settingService from '../service/setting-service';
 import { t } from '../i18n/i18n'
 import app from '../hono/hono';
 
@@ -141,7 +142,10 @@ app.use('*', async (c, next) => {
 
 	if (permIndex > -1) {
 
-		const permKeys = await permService.userPermKeys(c, authInfo.user.userId);
+		const [permKeys, setting] = await Promise.all([
+			permService.userPermKeys(c, authInfo.user.userId),
+			settingService.query(c)
+		]);
 
 		const userPaths = permKeyToPaths(permKeys);
 
@@ -149,7 +153,7 @@ app.use('*', async (c, next) => {
 			return path.startsWith(item);
 		});
 
-		if (userPermIndex === -1 && authInfo.user.email !== c.env.admin) {
+		if (userPermIndex === -1 && authInfo.user.email !== setting.adminEmail) {
 			throw new BizError(t('unauthorized'), 403);
 		}
 
