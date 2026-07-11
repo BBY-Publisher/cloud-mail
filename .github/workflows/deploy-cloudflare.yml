@@ -5,10 +5,18 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   Deploy-cloud-mail:
     name: 🏗️ Build and Deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     env:
       NAME: ${{ secrets.NAME || vars.NAME || 'cloud-mail' }}
@@ -73,8 +81,8 @@ jobs:
             exit 1
           fi
           
-          if ! jq -e 'type == "array"' <<< "$DOMAIN" ; then
-            echo "❌ DOMAIN variable must be a JSON array (e.g., [\"example.com\"])."
+          if ! jq -e 'type == "array" and length > 0' <<< "$DOMAIN" ; then
+            echo "❌ DOMAIN variable must be a non-empty JSON array (e.g., [\"example.com\"])."
             exit 1
           fi
           
@@ -96,17 +104,29 @@ jobs:
           if [ -z "$CUSTOM_DOMAIN" ]; then
             echo "::warning:: CUSTOM_DOMAIN variable is not set."
           fi
-          
+
           if [ -z "$RESEND_WEBHOOK_SECRET" ]; then
             echo "::warning:: RESEND_WEBHOOK_SECRET variable is not set. Resend webhooks will reject requests."
           fi
 
           if [ -z "$BREVO_API_KEY" ]; then
             echo "::warning:: BREVO_API_KEY variable is not set. Brevo will not be available as a sender."
+          elif [[ "$BREVO_API_KEY" != xkeysib-* ]]; then
+            echo "::warning:: BREVO_API_KEY does not start with 'xkeysib-'. This may not be a valid Brevo API key."
           fi
 
           if [ -z "$BREVO_WEBHOOK_SECRET" ]; then
             echo "::warning:: BREVO_WEBHOOK_SECRET variable is not set. Brevo webhooks will reject requests."
+          fi
+
+          if { [ -n "$BREVO_API_KEY" ] && [ -z "$BREVO_WEBHOOK_SECRET" ]; } \
+            || { [ -z "$BREVO_API_KEY" ] && [ -n "$BREVO_WEBHOOK_SECRET" ]; }; then
+            echo "::warning:: BREVO_API_KEY and BREVO_WEBHOOK_SECRET should be set together; otherwise Brevo is partially configured."
+          fi
+
+          if { [ -n "$LINUXDO_CLIENT_ID" ] || [ -n "$LINUXDO_CLIENT_SECRET" ] || [ -n "$LINUXDO_CALLBACK_URL" ] || [ -n "$LINUXDO_SWITCH" ]; } \
+            && { [ -z "$LINUXDO_CLIENT_ID" ] || [ -z "$LINUXDO_CLIENT_SECRET" ]; }; then
+            echo "::warning:: Some LINUXDO_* variables are set but LINUXDO_CLIENT_ID / LINUXDO_CLIENT_SECRET are missing. LinuxDO login will be disabled."
           fi
           
           CONFIG_FILE="wrangler-action.toml"
@@ -265,28 +285,35 @@ jobs:
       - name: ♻️ 应用D1结构迁移 / Apply D1 schema migrations
         run: |
           echo "🛠️ Applying D1 schema migrations through /api/init..."
-          sleep 15
-          
+
           WORKER_URL="${CUSTOM_DOMAIN:+https://$CUSTOM_DOMAIN}"
           WORKER_URL="${WORKER_URL:-${{ steps.deploy.outputs.worker_url }}}"
-          
+
           if [ -z "$WORKER_URL" ]; then
             echo "❌ Preview URL not available. Please set CUSTOM_DOMAIN."
             exit 1
           fi
-          
-          HTTP_CODE=$(curl -sL -w "%{http_code}" -o response.txt "$WORKER_URL/api/init/${JWT_SECRET}")
-          RESPONSE_BODY=$(cat response.txt)
 
-          if [ "$RESPONSE_BODY" = "success" ]; then
-            echo "✅ D1 schema migrations completed."
-          else
-            echo "❌ Failed. HTTP: $HTTP_CODE, Response: $RESPONSE_BODY"
-            exit 1
-          fi
+          INIT_URL="$WORKER_URL/api/init/${JWT_SECRET}"
+          echo "🔗 Polling $INIT_URL ..."
+
+          HTTP_CODE=""
+          RESPONSE_BODY=""
+          for i in $(seq 1 30); do
+            HTTP_CODE=$(curl -sL --max-time 30 -w "%{http_code}" -o response.txt "$INIT_URL" || true)
+            RESPONSE_BODY=$(cat response.txt || true)
+            if [ "$RESPONSE_BODY" = "success" ]; then
+              echo "✅ D1 schema migrations completed (after ${i} attempt(s))."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "❌ Failed after 30 attempts. HTTP: $HTTP_CODE, Response: $RESPONSE_BODY"
+          exit 1
 
       - name: 🗑️ 删除运行记录 / Delete workflow runs
-        uses: GitRML/delete-workflow-runs@main
+        uses: GitRML/delete-workflow-runs@6c7cf4852e73c46502ee79494d99f5b504cacc6d
         continue-on-error: true
         with:
           retain_days: '1'
