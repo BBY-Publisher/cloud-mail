@@ -503,9 +503,17 @@ const emailService = {
 	async sendByBrevo(brevoApiKey, params) {
 		const client = new BrevoClient({ apiKey: brevoApiKey });
 
+		const senderName = params.name || emailUtils.getName(params.accountEmail);
 		const request = {
-			sender: { name: params.name, email: params.accountEmail },
-			to: params.receiveEmail.map(email => ({ email })),
+			sender: { name: senderName, email: params.accountEmail },
+			to: params.receiveEmail.map(email => {
+				const recipient = { email };
+				const name = emailUtils.getName(email);
+				if (name) {
+					recipient.name = name;
+				}
+				return recipient;
+			}),
 			subject: params.subject
 		};
 
