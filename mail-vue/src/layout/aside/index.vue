@@ -66,7 +66,7 @@
         </el-menu-item>
         <el-menu-item @click="router.push({name: 'webhook-event'})" index="webhook-event" v-perm="'webhook-event:query'"
                       :class="route.meta.name === 'webhook-event' ? 'choose-item' : ''">
-          <Icon icon="fluent:webhook-20-regular" width="22" height="22" />
+          <Icon icon="mdi:webhook" width="22" height="22" />
           <span class="menu-name" style="margin-left: 20px">{{$t('webhookEvent')}}</span>
         </el-menu-item>
         <el-menu-item @click="router.push({name: 'sys-setting'})" index="sys-setting" v-perm="'setting:query'"

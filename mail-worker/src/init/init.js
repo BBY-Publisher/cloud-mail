@@ -152,6 +152,17 @@ const dbInit = {
 			console.warn(`跳过表 webhook_event：${e.message}`);
 		}
 
+		// Verify the table actually exists. CREATE TABLE IF NOT EXISTS should
+		// not silently fail; if it does we want init() to throw so deploy
+		// scripts can detect the failure rather than the table being missing
+		// at first webhook request.
+		const tableCheck = await c.env.db
+			.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='webhook_event'`)
+			.first();
+		if (!tableCheck) {
+			throw new Error('v3_4DB: webhook_event table was not created');
+		}
+
 		try {
 			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_webhook_resend_email_id ON webhook_event(resend_email_id);`).run();
 		} catch (e) {
