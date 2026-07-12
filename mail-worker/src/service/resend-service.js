@@ -172,6 +172,76 @@ const resendService = {
 		return result.data;
 	},
 
+	async syncFromProvider(c) {
+		const { resendTokens = {} } = await settingService.query(c);
+		const tokens = Object.entries(resendTokens).filter(([, token]) => token);
+
+		let inserted = 0;
+		let skipped = 0;
+		const errors = [];
+
+		for (const [domain, token] of tokens) {
+			try {
+				const resend = new Resend(token);
+				let after;
+				let hasMore = true;
+				let pages = 0;
+
+				while (hasMore && pages < 50) {
+					pages++;
+					const listResult = await resend.emails.list({ limit: 100, after });
+
+					if (listResult.error) {
+						errors.push(`resend[${domain}]: ${listResult.error.message || 'list failed'}`);
+						break;
+					}
+
+					const items = listResult.data?.data || [];
+					hasMore = !!listResult.data?.has_more;
+
+					for (const item of items) {
+						if (!item?.id) continue;
+
+						try {
+							const existing = await emailService.selectByResendEmailId(c, item.id);
+							if (existing) {
+								skipped++;
+								continue;
+							}
+
+							const detailResult = await resend.emails.get(item.id);
+							if (detailResult.error || !detailResult.data) continue;
+
+							const emailRow = await this.toEmailRow(c, {
+								type: 'email.sent',
+								data: {
+									email_id: item.id,
+									from: item.from,
+									to: item.to,
+									subject: item.subject,
+									created_at: item.created_at
+								}
+							}, detailResult.data);
+
+							await emailService.insertFromResend(c, emailRow);
+							inserted++;
+						} catch (e) {
+							errors.push(`resend[${domain}][${item.id}]: ${e?.message || e}`);
+						}
+					}
+
+					if (items.length > 0) {
+						after = items[items.length - 1].id;
+					}
+				}
+			} catch (e) {
+				errors.push(`resend[${domain}]: ${e?.message || e}`);
+			}
+		}
+
+		return { inserted, skipped, errors };
+	},
+
 	async getResendToken(c, body) {
 		const { resendTokens = {} } = await settingService.query(c);
 		const from = parseAddress(body.data?.from || '');

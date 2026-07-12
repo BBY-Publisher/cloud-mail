@@ -24,3 +24,7 @@ export function emailSend(form,progress) {
         noMsg: true
     })
 }
+
+export function emailSync() {
+    return http.post('/email/sync', null, { noMsg: true, timeout: 120 * 1000 })
+}

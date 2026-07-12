@@ -194,6 +194,81 @@ const brevoService = {
 		}
 	},
 
+	async syncFromProvider(c) {
+		const apiKey = c.env.brevo_api_key;
+
+		if (!apiKey) {
+			throw new BizError('BREVO_API_KEY 未配置', 500);
+		}
+
+		const client = new BrevoClient({ apiKey });
+
+		let inserted = 0;
+		let skipped = 0;
+		const errors = [];
+		let offset = 0;
+		const limit = 100;
+		let pages = 0;
+
+		while (pages < 50) {
+			pages++;
+
+			let response;
+			try {
+				response = await client.transactionalEmails.getTransacEmailsList({ limit, offset, sort: 'desc' });
+			} catch (e) {
+				errors.push(`brevo[list]: ${e?.body?.message || e?.message || 'list failed'}`);
+				break;
+			}
+
+			const list = response?.data?.transactionalEmails || [];
+			const total = response?.data?.count || 0;
+
+			for (const item of list) {
+				const messageId = item.messageId || item.uuid;
+
+				if (!messageId) continue;
+
+				try {
+					const existing = await emailService.selectByResendEmailId(c, messageId);
+					if (existing) {
+						skipped++;
+						continue;
+					}
+
+					let detail;
+					try {
+						detail = (await client.transactionalEmails.getTransacEmailContent({ uuid: messageId }))?.data;
+					} catch (e) {
+						errors.push(`brevo[${messageId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
+						continue;
+					}
+
+					if (!detail) continue;
+
+					const emailRow = await this.toEmailRow(c, {
+						event: 'request',
+						messageId,
+						email: item.email,
+						from: item.from,
+						subject: item.subject,
+						date: item.date
+					}, detail);
+
+					await emailService.insertFromResend(c, emailRow);
+					inserted++;
+				} catch (e) {
+					errors.push(`brevo[${item.messageId || item.uuid}]: ${e?.message || e}`);
+				}
+			}
+
+			offset += list.length;
+			if (list.length < limit || offset >= total) break;
+		}
+
+		return { inserted, skipped, errors };
+	},
+
 	async toEmailRow(c, body, detail) {
 		const from = parseAddress(detail.from || body.from || '');
 		const recipients = normalizeAddressList(detail.to || [{ email: body.email, name: '' }]);

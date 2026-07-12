@@ -25,6 +25,7 @@ const exclude = [
 const requirePerms = [
 	'/email/send',
 	'/email/delete',
+	'/email/sync',
 	'/account/list',
 	'/account/delete',
 	'/account/add',
@@ -69,6 +70,7 @@ const requirePerms = [
 const premKey = {
 	'email:delete': ['/email/delete'],
 	'email:send': ['/email/send'],
+	'email:sync': ['/email/sync'],
 	'account:add': ['/account/add'],
 	'account:query': ['/account/list'],
 	'account:delete': ['/account/delete'],
@@ -84,7 +86,6 @@ const premKey = {
 	'user:set-status': ['/user/setStatus', '/user/restore'],
 	'user:set-type': ['/user/setType'],
 	'user:delete': ['/user/delete','/user/deleteAccount'],
-	'all-email:query': ['/allEmail/list','/allEmail/latest'],
 	'all-email:delete': ['/allEmail/delete','/allEmail/batchDelete'],
 	'setting:query': ['/setting/query'],
 	'setting:set': ['/setting/set', '/setting/setBackground','/setting/deleteBackground','/setting/setBlacklist'],

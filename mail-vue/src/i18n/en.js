@@ -363,7 +363,13 @@ const en = {
     eventType: 'Event Type',
     payload: 'Payload',
     linkedEmail: 'Linked Email',
-    webhookEventEmpty: 'No webhook events yet'
+    webhookEventEmpty: 'No webhook events yet',
+    sync: 'Sync',
+    syncing: 'Syncing...',
+    syncConfirm: 'Fetch sent emails from the provider and sync them into the system?',
+    syncSuccess: 'Sync complete. Added {inserted}, skipped {skipped}',
+    syncFailed: 'Sync failed',
+    syncNoProvider: 'Resend or Brevo is not configured'
 }
 
 export default en

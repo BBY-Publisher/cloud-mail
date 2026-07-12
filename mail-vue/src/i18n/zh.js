@@ -363,6 +363,12 @@ const zh = {
     eventType: '事件类型',
     payload: '原始数据',
     linkedEmail: '关联邮件',
-    webhookEventEmpty: '暂无事件'
+    webhookEventEmpty: '暂无事件',
+    sync: '同步',
+    syncing: '同步中...',
+    syncConfirm: '确认从邮件服务商拉取已发送的邮件并同步到系统中？',
+    syncSuccess: '同步完成，新增 {inserted} 封，跳过 {skipped} 封',
+    syncFailed: '同步失败',
+    syncNoProvider: '未配置 Resend 或 Brevo'
 }
 export default zh
