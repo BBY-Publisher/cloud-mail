@@ -67,6 +67,16 @@ const en = {
 	notAdmin: 'The entered email is not an administrator email',
 	emailExistDatabase: 'Email already exists in the database',
 	notConfigOss: 'Object storage not configured',
+	noPerm: 'Permission denied',
+	noDeleteEmailPerm: 'Only the mailbox owner can delete emails',
+	memberSelfAccount: 'Primary mailbox cannot be shared',
+	memberNotExist: 'User does not exist',
+	memberAlreadyExists: 'User is already a member',
+	cannotShareOwner: 'Cannot add the owner as a member',
+	notAccountOwnerOrAdmin: 'Mailbox owner or admin permission required',
+	cannotAddSelfAsMember: 'Cannot add yourself as a member',
+	adminAddAccountFail: 'Admin failed to add mailbox',
+	memberRoleInvalid: 'Invalid member role',
 	perms: {
 		"邮件": "Emails",
 		"邮件发送": "Send Email",
@@ -103,7 +113,12 @@ const en = {
 		"签名管理": "Signatures",
 		"签名查看": "View Signatures",
 		"签名修改": "Change Signatures",
-		"发件重置": "Reset Send Count"
+		"发件重置": "Reset Send Count",
+		'查看共享成员': 'View Members',
+		'管理共享成员': 'Manage Members',
+		'管理员添加邮箱': 'Admin Add Mailbox',
+		'管理员重命名邮箱': 'Admin Rename Mailbox',
+		'管理员删除邮箱': 'Admin Delete Mailbox'
 	}
 };
 

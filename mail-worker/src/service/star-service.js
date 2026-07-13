@@ -1,6 +1,7 @@
 import orm from '../entity/orm';
 import { star } from '../entity/star';
 import emailService from './email-service';
+import accountMemberService from './account-member-service';
 import BizError from '../error/biz-error';
 import { and, desc, eq, lt, sql, inArray } from 'drizzle-orm';
 import email from '../entity/email';
@@ -11,11 +12,12 @@ const starService = {
 
 	async add(c, params, userId) {
 		const { emailId } = params;
-		const email = await emailService.selectById(c, emailId);
-		if (!email) {
+		const emailRow = await emailService.selectById(c, emailId);
+		if (!emailRow) {
 			throw new BizError(t('starNotExistEmail'));
 		}
-		if (email.userId !== userId) {
+		const canRead = await accountMemberService.can(c, emailRow.accountId, userId, 'read');
+		if (!canRead) {
 			throw new BizError(t('starNotExistEmail'));
 		}
 		const exist = await orm(c).select().from(star).where(

@@ -67,6 +67,16 @@ const zh = {
 	notAdmin: '输入的邮箱不是管理员邮箱',
 	emailExistDatabase: '有邮箱已存在数据库中',
 	notConfigOss: '对象存储未配置',
+	noPerm: '权限不足',
+	noDeleteEmailPerm: '仅邮箱所有者可删除邮件',
+	memberSelfAccount: '不能将主邮箱共享给他人',
+	memberNotExist: '用户不存在',
+	memberAlreadyExists: '该用户已是成员',
+	cannotShareOwner: '不能将所有者添加为成员',
+	notAccountOwnerOrAdmin: '需要邮箱所有者或管理员权限',
+	cannotAddSelfAsMember: '不能添加自己为成员',
+	adminAddAccountFail: '管理员添加邮箱失败',
+	memberRoleInvalid: '无效的成员角色',
 	perms: {
 		"邮件": "邮件",
 		"邮件发送": "邮件发送",
@@ -103,7 +113,12 @@ const zh = {
 		"签名管理": "签名管理",
 		"签名查看": "签名查看",
 		"签名修改": "签名修改",
-		'发件重置': '发件重置'
+		'发件重置': '发件重置',
+		'查看共享成员': '查看共享成员',
+		'管理共享成员': '管理共享成员',
+		'管理员添加邮箱': '管理员添加邮箱',
+		'管理员重命名邮箱': '管理员重命名邮箱',
+		'管理员删除邮箱': '管理员删除邮箱'
 	}
 }
 

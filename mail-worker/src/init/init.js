@@ -33,6 +33,8 @@ const dbInit = {
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
+
+		await this.v3_5DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -173,6 +175,54 @@ const dbInit = {
 			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_webhook_create_time ON webhook_event(create_time);`).run();
 		} catch (e) {
 			console.warn(`跳过索引 webhook_event.create_time：${e.message}`);
+		}
+	},
+
+	async v3_5DB(c) {
+		try {
+			await c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS account_member (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					account_id INTEGER NOT NULL,
+					user_id INTEGER NOT NULL,
+					role INTEGER NOT NULL DEFAULT 1,
+					create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+					update_time DATETIME DEFAULT CURRENT_TIMESTAMP
+				)
+			`).run();
+		} catch (e) {
+			console.warn(`跳过表 account_member：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_account_member_unique ON account_member(account_id, user_id);`).run();
+		} catch (e) {
+			console.warn(`跳过索引 account_member.unique：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_account_member_user ON account_member(user_id);`).run();
+		} catch (e) {
+			console.warn(`跳过索引 account_member.user_id：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_account_member_account ON account_member(account_id);`).run();
+		} catch (e) {
+			console.warn(`跳过索引 account_member.account_id：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				INSERT INTO perm (perm_id, name, perm_key, pid, type, sort) VALUES
+				(40, '查看共享成员', 'account:member:query', 21, 2, 3),
+				(41, '管理共享成员', 'account:member:set', 21, 2, 4),
+				(42, '管理员添加邮箱', 'admin:account:add', 6, 2, 8),
+				(43, '管理员重命名邮箱', 'admin:account:rename', 6, 2, 9),
+				(44, '管理员删除邮箱', 'admin:account:delete', 6, 2, 10)
+			`).run();
+		} catch (e) {
+			console.warn(`跳过 perm 种子：${e.message}`);
 		}
 	},
 

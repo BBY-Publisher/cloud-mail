@@ -14,6 +14,14 @@ export const accountConst = {
 	}
 }
 
+export const accountMemberConst = {
+	role: {
+		VIEWER: 1,
+		SENDER: 2,
+		ADMIN: 3
+	}
+}
+
 export const roleConst = {
 	isDefault: {
 		CLOSE: 0,

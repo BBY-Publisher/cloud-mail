@@ -5,6 +5,7 @@ import { and, desc, eq, gt, inArray, lt, count, asc, sql, ne, or, like, lte, gte
 import { star } from '../entity/star';
 import settingService from './setting-service';
 import accountService from './account-service';
+import accountMemberService from './account-member-service';
 import BizError from '../error/biz-error';
 import emailUtils from '../utils/email-utils';
 import fileUtils from '../utils/file-utils';
@@ -75,6 +76,16 @@ const emailService = {
 			allReceive = accountRow.allReceive;
 		}
 
+		const accessibleIds = await accountMemberService.listAccessibleAccountIds(c, userId);
+		if (accessibleIds.length === 0) {
+			return { list: [], total: 0, latestEmail: { emailId: 0, accountId, userId } };
+		}
+		const accountScope = allReceive ? accessibleIds : (accessibleIds.includes(Number(accountId)) ? [Number(accountId)] : []);
+		if (accountScope.length === 0) {
+			return { list: [], total: 0, latestEmail: { emailId: 0, accountId, userId } };
+		}
+		const inAccessible = inArray(email.accountId, accountScope);
+
 		const query = orm(c)
 			.select({
 				...email,
@@ -93,8 +104,7 @@ const emailService = {
 			)
 			.where(
 				and(
-					allReceive ? eq(1,1) : eq(email.accountId, accountId),
-					eq(email.userId, userId),
+					inAccessible,
 					timeSort ? gt(email.emailId, emailId) : lt(email.emailId, emailId),
 					eq(email.type, type),
 					eq(email.isDel, isDel.NORMAL),
@@ -117,8 +127,7 @@ const emailService = {
 			)
 			.where(
 				and(
-					allReceive ? eq(1,1) : eq(email.accountId, accountId),
-					eq(email.userId, userId),
+					inAccessible,
 					eq(email.type, type),
 					eq(email.isDel, isDel.NORMAL),
 					eq(account.isDel, isDel.NORMAL)
@@ -127,8 +136,7 @@ const emailService = {
 
 		const latestEmailQuery = orm(c).select().from(email).where(
 			and(
-				allReceive ? eq(1,1) : eq(email.accountId, accountId),
-				eq(email.userId, userId),
+				inAccessible,
 				eq(email.type, type),
 				eq(email.isDel, isDel.NORMAL)
 			))
@@ -157,12 +165,30 @@ const emailService = {
 
 	async delete(c, params, userId) {
 		const { emailIds } = params;
-		const emailIdList = emailIds.split(',').map(Number);
+		const emailIdList = emailIds.split(',').map(Number).filter(n => !isNaN(n));
+		if (emailIdList.length === 0) return;
+
+		const emailRows = await orm(c).select({
+			emailId: email.emailId,
+			accountId: email.accountId,
+		}).from(email).where(
+			and(inArray(email.emailId, emailIdList), eq(email.isDel, isDel.NORMAL))
+		).all();
+
+		if (emailRows.length === 0) return;
+
+		const allowed = [];
+		for (const row of emailRows) {
+			const canDelete = await accountMemberService.can(c, row.accountId, userId, 'delete_email');
+			if (!canDelete) {
+				throw new BizError(t('noDeleteEmailPerm'), 403);
+			}
+			allowed.push(row.emailId);
+		}
+
 		await orm(c).update(email).set({ isDel: isDel.DELETE }).where(
-			and(
-				eq(email.userId, userId),
-				inArray(email.emailId, emailIdList)))
-			.run();
+			and(inArray(email.emailId, allowed), eq(email.isDel, isDel.NORMAL))
+		).run();
 	},
 
 	receive(c, params, cidAttList, r2domain) {
@@ -239,7 +265,10 @@ const emailService = {
 		}
 
 		if (accountRow.userId !== userId) {
-			throw new BizError(t('sendEmailNotCurUser'));
+			const canSend = await accountMemberService.can(c, accountRow.accountId, userId, 'send');
+			if (!canSend) {
+				throw new BizError(t('sendEmailNotCurUser'));
+			}
 		}
 
 		if (adminEmail !== userRow.email) {
@@ -877,6 +906,11 @@ const emailService = {
 			allReceive = accountRow.allReceive;
 		}
 
+		const accessibleIds = await accountMemberService.listAccessibleAccountIds(c, userId);
+		if (accessibleIds.length === 0) return [];
+		const accountScope = allReceive ? accessibleIds : (accessibleIds.includes(Number(accountId)) ? [Number(accountId)] : []);
+		if (accountScope.length === 0) return [];
+
 		let list = await orm(c).select({...email}).from(email)
 			.leftJoin(
 				account,
@@ -885,10 +919,9 @@ const emailService = {
 			.where(
 				and(
 					gt(email.emailId, emailId),
-					eq(email.userId, userId),
 					eq(email.isDel, isDel.NORMAL),
 					eq(account.isDel, isDel.NORMAL),
-					allReceive ? eq(1,1) : eq(email.accountId, accountId),
+					inArray(email.accountId, accountScope),
 					eq(email.type, emailConst.type.RECEIVE)
 				))
 			.orderBy(desc(email.emailId))
@@ -1161,7 +1194,23 @@ const emailService = {
 
 	async read(c, params, userId) {
 		const { emailIds } = params;
-		await orm(c).update(email).set({ unread: emailConst.unread.READ }).where(and(eq(email.userId, userId), inArray(email.emailId, emailIds)));
+		const emailIdList = (emailIds || '').split(',').map(Number).filter(n => !isNaN(n));
+		if (emailIdList.length === 0) return;
+
+		const emailRows = await orm(c).select({ accountId: email.accountId }).from(email)
+			.where(and(inArray(email.emailId, emailIdList), eq(email.isDel, isDel.NORMAL)))
+			.all();
+
+		const allowed = [];
+		for (const row of emailRows) {
+			const canRead = await accountMemberService.can(c, row.accountId, userId, 'read');
+			if (canRead) allowed.push(row.accountId);
+		}
+
+		if (allowed.length === 0) return;
+
+		await orm(c).update(email).set({ unread: emailConst.unread.READ })
+			.where(and(inArray(email.emailId, emailIdList), inArray(email.accountId, allowed)));
 	}
 };
 

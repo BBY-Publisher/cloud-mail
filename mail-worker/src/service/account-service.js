@@ -3,8 +3,10 @@ import verifyUtils from '../utils/verify-utils';
 import emailUtils from '../utils/email-utils';
 import userService from './user-service';
 import emailService from './email-service';
+import accountMemberService from './account-member-service';
 import orm from '../entity/orm';
 import account from '../entity/account';
+import userEntity from '../entity/user';
 import { and, asc, eq, gt, inArray, count, sql, ne, or, lt, desc } from 'drizzle-orm';
 import {accountConst, isDel, settingConst} from '../const/entity-const';
 import settingService from './setting-service';
@@ -103,7 +105,7 @@ const accountService = {
 		return orm(c).select().from(account).where(sql`${account.email} COLLATE NOCASE = ${email}`).get();
 	},
 
-	list(c, params, userId) {
+	async list(c, params, userId) {
 
 		let { accountId, size, lastSort } = params;
 
@@ -123,21 +125,55 @@ const accountService = {
 			lastSort = 9999999999;
 		}
 
-		return orm(c).select().from(account).where(
-			and(
-				eq(account.userId, userId),
-				eq(account.isDel, isDel.NORMAL),
+		const accessibleIds = await accountMemberService.listAccessibleAccountIds(c, userId);
+
+		if (accessibleIds.length === 0) {
+			return [];
+		}
+
+		const memberRoleMap = await accountMemberService.getMemberMapForAccounts(c, accessibleIds);
+		const memberCountMap = await accountMemberService.countMembersForAccounts(c, accessibleIds);
+
+		const rows = await orm(c)
+			.select({
+				accountId: account.accountId,
+				email: account.email,
+				name: account.name,
+				userId: account.userId,
+				status: account.status,
+				latestEmailTime: account.latestEmailTime,
+				allReceive: account.allReceive,
+				sort: account.sort,
+				ownerEmail: userEntity.email,
+			})
+			.from(account)
+			.leftJoin(userEntity, eq(userEntity.userId, account.userId))
+			.where(
+				and(
+					inArray(account.accountId, accessibleIds),
+					eq(account.isDel, isDel.NORMAL),
 					or(
 						lt(account.sort, lastSort),
 						and(
 							eq(account.sort, lastSort),
 							gt(account.accountId, accountId)
 						)
-					))
+					)
 				)
+			)
 			.orderBy(desc(account.sort), asc(account.accountId))
 			.limit(size)
 			.all();
+
+		return rows.map(row => {
+			const isOwner = row.userId === userId;
+			const memberRole = memberRoleMap.get(row.accountId);
+			return {
+				...row,
+				perm: isOwner ? 'owner' : (memberRole ? (memberRole === 1 ? 'viewer' : memberRole === 2 ? 'sender' : 'admin') : null),
+				memberCount: memberCountMap.get(row.accountId) || 0,
+			};
+		});
 	},
 
 	async delete(c, params, userId) {
@@ -161,6 +197,18 @@ const accountService = {
 			.run();
 	},
 
+	async deleteByAdmin(c, params) {
+
+		const { accountId } = params;
+		const accountRow = await this.selectById(c, Number(accountId));
+		if (!accountRow) {
+			throw new BizError(t('senderAccountNotExist'), 404);
+		}
+		await emailService.physicsDeleteByAccountId(c, accountRow.accountId);
+		await accountMemberService.physicsDeleteByAccountId(c, accountRow.accountId);
+		await orm(c).delete(account).where(eq(account.accountId, accountRow.accountId)).run();
+	},
+
 	selectById(c, accountId) {
 		return orm(c).select().from(account).where(
 			and(eq(account.accountId, accountId),
@@ -178,6 +226,7 @@ const accountService = {
 
 	async physicsDeleteByUserIds(c, userIds) {
 		await emailService.physicsDeleteUserIds(c, userIds);
+		await accountMemberService.physicsDeleteByUserIds(c, userIds);
 		await orm(c).delete(account).where(inArray(account.userId,userIds)).run();
 	},
 
@@ -214,7 +263,11 @@ const accountService = {
 		if (name.length > 30) {
 			throw new BizError(t('usernameLengthLimit'));
 		}
-		await orm(c).update(account).set({name}).where(and(eq(account.userId, userId),eq(account.accountId, accountId))).run();
+		const canRename = await accountMemberService.can(c, Number(accountId), userId, 'rename');
+		if (!canRename) {
+			throw new BizError(t('noPerm'), 403);
+		}
+		await orm(c).update(account).set({name}).where(eq(account.accountId, Number(accountId))).run();
 	},
 
 	async allAccount(c, params) {
@@ -243,27 +296,81 @@ const accountService = {
 	async physicsDelete(c, params) {
 		const { accountId } = params
 		await emailService.physicsDeleteByAccountId(c, accountId)
+		await accountMemberService.physicsDeleteByAccountId(c, accountId)
 		await orm(c).delete(account).where(eq(account.accountId, accountId)).run();
 	},
 
-	async setAllReceive(c, params, userId) {
-		let a = null
-		const { accountId } = params;
-		const accountRow = await this.selectById(c, accountId);
-		if (accountRow.userId !== userId) {
-			return;
+	async renameByAdmin(c, params) {
+		const { accountId, name } = params;
+		if (!name || name.length > 30) {
+			throw new BizError(t('usernameLengthLimit'));
 		}
-		await orm(c).update(account).set({ allReceive: accountConst.allReceive.CLOSE }).where(eq(account.userId, userId)).run();
-		await orm(c).update(account).set({ allReceive: accountRow.allReceive ? 0 : 1 }).where(eq(account.accountId, accountId)).run();
+		const accountRow = await this.selectById(c, Number(accountId));
+		if (!accountRow) {
+			throw new BizError(t('senderAccountNotExist'), 404);
+		}
+		await orm(c).update(account).set({ name }).where(eq(account.accountId, accountRow.accountId)).run();
+	},
+
+	async addForUser(c, params) {
+		const { email, userId, name } = params;
+
+		if (!email || !verifyUtils.isEmail(email)) {
+			throw new BizError(t('notEmail'));
+		}
+
+		const { domainList } = await settingService.query(c);
+		if (!domainList.includes('@' + emailUtils.getDomain(email))) {
+			throw new BizError(t('notExistDomain'));
+		}
+
+		const targetUser = await userService.selectById(c, Number(userId));
+		if (!targetUser) {
+			throw new BizError(t('notExistUser'));
+		}
+
+		let existing = await this.selectByEmailIncludeDel(c, email);
+		if (existing && existing.isDel === isDel.DELETE) {
+			throw new BizError(t('isDelAccount'));
+		}
+		if (existing) {
+			throw new BizError(t('isRegAccount'));
+		}
+
+		const accountName = name || emailUtils.getName(email);
+		await orm(c).insert(account).values({
+			email,
+			userId: targetUser.userId,
+			name: accountName,
+		}).run();
+	},
+
+	async setAllReceive(c, params, userId) {
+		const { accountId } = params;
+		const numId = Number(accountId);
+		const canManage = await accountMemberService.can(c, numId, userId, 'setAllReceive');
+		if (!canManage) {
+			throw new BizError(t('noPerm'), 403);
+		}
+		const accountRow = await this.selectById(c, numId);
+		if (!accountRow) return;
+		await orm(c).update(account).set({ allReceive: accountConst.allReceive.CLOSE }).where(eq(account.userId, accountRow.userId)).run();
+		await orm(c).update(account).set({ allReceive: accountRow.allReceive ? 0 : 1 }).where(eq(account.accountId, numId)).run();
 	},
 
 	async setAsTop(c, params, userId) {
 		const { accountId } = params;
-		const userRow = await userService.selectById(c, userId);
-		const mainAccountRow = await accountService.selectByEmailIncludeDel(c, userRow.email);
+		const canRename = await accountMemberService.can(c, Number(accountId), userId, 'rename');
+		if (!canRename) {
+			throw new BizError(t('noPerm'), 403);
+		}
+		const accountRow = await this.selectById(c, Number(accountId));
+		if (!accountRow) return;
+		const ownerUser = await userService.selectById(c, accountRow.userId);
+		const mainAccountRow = await accountService.selectByEmailIncludeDel(c, ownerUser.email);
 		let mainSort = mainAccountRow.sort === 0 ? 2 : mainAccountRow.sort + 1;
-		await orm(c).update(account).set({ sort: mainSort }).where(eq(account.email, userRow.email )).run();
-		await orm(c).update(account).set({ sort: mainSort - 1 }).where(and(eq(account.accountId, accountId),eq(account.userId,userId))).run();
+		await orm(c).update(account).set({ sort: mainSort }).where(eq(account.email, ownerUser.email )).run();
+		await orm(c).update(account).set({ sort: mainSort - 1 }).where(eq(account.accountId, Number(accountId))).run();
 	}
 };
 
