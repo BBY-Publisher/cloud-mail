@@ -27,7 +27,7 @@ export const setting = sqliteTable('setting', {
 	resendTokens: text('resend_tokens').default("{}").notNull(),
 	domainProviders: text('domain_providers').default("{}").notNull(),
 	managedDomains: text('managed_domains').default("[]").notNull(),
-	adminEmail: text('admin_email').default("").notNull(),
+	adminEmails: text('admin_emails').default("[]").notNull(),
 	noticeTitle: text('notice_title').default('').notNull(),
 	noticeContent: text('notice_content').default('').notNull(),
 	noticeType: text('notice_type').default('').notNull(),

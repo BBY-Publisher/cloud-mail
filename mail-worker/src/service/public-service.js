@@ -179,9 +179,9 @@ const publicService = {
 		const { email, password } = params
 
 		const userRow = await userService.selectByEmailIncludeDel(c, email);
-		const { adminEmail } = await settingService.query(c);
+		const setting = await settingService.query(c);
 
-		if (email !== adminEmail) {
+		if (!settingService.isAdmin(setting, email)) {
 			throw new BizError(t('notAdmin'));
 		}
 

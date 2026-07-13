@@ -35,6 +35,7 @@ const dbInit = {
 		await this.v3_4DB(c);
 
 		await this.v3_5DB(c);
+		await this.v3_6DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -223,6 +224,24 @@ const dbInit = {
 			`).run();
 		} catch (e) {
 			console.warn(`跳过 perm 种子：${e.message}`);
+		}
+	},
+
+	async v3_6DB(c) {
+		try {
+			await c.env.db.prepare(`ALTER TABLE setting ADD COLUMN admin_emails TEXT NOT NULL DEFAULT '[]';`).run();
+		} catch (e) {
+			console.warn(`跳过字段 admin_emails：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				UPDATE setting
+				SET admin_emails = json_array(admin_email)
+				WHERE admin_email != '' AND admin_emails = '[]';
+			`).run();
+		} catch (e) {
+			console.warn(`跳过 admin_emails 回填：${e.message}`);
 		}
 	},
 

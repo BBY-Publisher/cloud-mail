@@ -5,9 +5,9 @@ compatibility_date = "2025-06-04"
 [observability]
 enabled = true
 
-[[routes]]
-pattern = "${CUSTOM_DOMAIN}"
-custom_domain = true
+#[[routes]]
+#pattern = "${CUSTOM_DOMAIN}"
+#custom_domain = true
 
 [[d1_databases]]
 binding = "db"

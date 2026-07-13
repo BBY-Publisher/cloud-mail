@@ -171,7 +171,7 @@ app.use('*', async (c, next) => {
 			return path.startsWith(item);
 		});
 
-		if (userPermIndex === -1 && authInfo.user.email !== setting.adminEmail) {
+		if (userPermIndex === -1 && !settingService.isAdmin(setting, authInfo.user.email)) {
 			throw new BizError(t('unauthorized'), 403);
 		}
 

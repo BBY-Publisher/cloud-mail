@@ -255,14 +255,14 @@
               </div>
               <div class="setting-item">
                 <div>
-                  <span>{{ $t('adminEmail') }}</span>
-                  <el-tooltip effect="dark" :content="$t('adminEmailDesc')">
+                  <span>{{ $t('adminEmails') }}</span>
+                  <el-tooltip effect="dark" :content="$t('adminEmailsDesc')">
                     <Icon class="warning" icon="fe:warning" width="18" height="18"/>
                   </el-tooltip>
                 </div>
                 <div style="flex: 1; min-width: 0;">
-                  <el-input v-model="setting.adminEmail" @blur="changeAdminEmail"
-                            :placeholder="'admin@example.com'"/>
+                  <el-input-tag v-model="setting.adminEmails" @change="changeAdminEmails"
+                                :placeholder="'admin@example.com'" style="width: 100%;"/>
                 </div>
               </div>
             </div>
@@ -1581,11 +1581,13 @@ function changeManagedDomains(value) {
   editSetting({ managedDomains: normalized }, false)
 }
 
-function changeAdminEmail() {
+function changeAdminEmails(value) {
   if (!settingReady.value) return
-  const value = String(setting.value.adminEmail || '').trim().toLowerCase()
-  setting.value.adminEmail = value
-  editSetting({ adminEmail: value }, false)
+  const normalized = (value || [])
+    .map(e => String(e).trim().toLowerCase())
+    .filter(Boolean)
+  setting.value.adminEmails = normalized
+  editSetting({ adminEmails: normalized }, false)
 }
 
 function changeField(key, value) {

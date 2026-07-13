@@ -35,7 +35,7 @@ const userService = {
 			roleService.selectById(c, userRow.type),
 			settingService.query(c)
 		]);
-		const isAdmin = userRow.email === setting.adminEmail;
+		const isAdmin = settingService.isAdmin(setting, userRow.email);
 		const permKeys = isAdmin ? ['*'] : await permService.userPermKeys(c, userId);
 
 		const user = {};
@@ -178,7 +178,6 @@ const userService = {
 			roleService.selectByIdsHasPermKey(c, types,'email:send'),
 			settingService.query(c)
 		]);
-		const adminEmail = setting.adminEmail;
 
 		const receiveMap = Object.fromEntries(emailCounts.map(item => [item.userId, item.count]));
 		const sendMap = Object.fromEntries(sendCounts.map(item => [item.userId, item.count]));
@@ -211,7 +210,7 @@ const userService = {
 				sendAction.hasPerm = false;
 			}
 
-			if (user.email === adminEmail) {
+			if (settingService.isAdmin(setting, user.email)) {
 				sendAction.sendType = constant.ADMIN_ROLE.sendType;
 				sendAction.sendCount = constant.ADMIN_ROLE.sendCount;
 				sendAction.hasPerm = true;

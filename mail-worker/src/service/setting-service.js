@@ -17,6 +17,7 @@ const settingService = {
 		settingRow.resendTokens = JSON.parse(settingRow.resendTokens || '{}');
 		settingRow.domainProviders = JSON.parse(settingRow.domainProviders || '{}');
 		settingRow.managedDomains = JSON.parse(settingRow.managedDomains || '[]');
+		settingRow.adminEmails = JSON.parse(settingRow.adminEmails || '[]');
 		c.set('setting', settingRow);
 		await c.env.kv.put(KvConst.SETTING, JSON.stringify(settingRow));
 	},
@@ -50,15 +51,22 @@ const settingService = {
 
 		setting.domainList = managedDomains.map(item => '@' + item);
 
-		if (!setting.adminEmail && c.env.admin) {
-			setting.adminEmail = c.env.admin;
+		if (!Array.isArray(setting.adminEmails)) {
+			setting.adminEmails = [];
 		}
 
-		if (!setting.adminEmail) {
-			throw new BizError(t('noAdminVariable'));
+		if (setting.adminEmails.length === 0 && setting.adminEmail) {
+			setting.adminEmails = [String(setting.adminEmail).toLowerCase()];
 		}
 
-		setting.adminEmail = String(setting.adminEmail).toLowerCase();
+		if (setting.adminEmails.length === 0 && c.env.admin) {
+			const seed = String(c.env.admin).trim().toLowerCase();
+			if (seed) setting.adminEmails = [seed];
+		}
+
+		setting.adminEmails = setting.adminEmails
+			.map(e => String(e || '').trim().toLowerCase())
+			.filter(Boolean);
 
 
 		let linuxdoSwitch = c.env.linuxdo_switch;
@@ -163,8 +171,12 @@ const settingService = {
 			);
 		}
 
-		if (typeof params.adminEmail === 'string') {
-			params.adminEmail = params.adminEmail.trim().toLowerCase();
+		if (Array.isArray(params.adminEmails)) {
+			params.adminEmails = JSON.stringify(
+				params.adminEmails
+					.map(e => String(e).trim().toLowerCase())
+					.filter(Boolean)
+			);
 		}
 
 		if (Array.isArray(params.emailPrefixFilter)) {
@@ -271,6 +283,12 @@ const settingService = {
 			minEmailPrefix: settingRow.minEmailPrefix,
 			projectLink: settingRow.projectLink
 		};
+	},
+
+	isAdmin(setting, email) {
+		if (!setting || !email || !Array.isArray(setting.adminEmails)) return false;
+		const target = String(email).trim().toLowerCase();
+		return setting.adminEmails.includes(target);
 	},
 
 };

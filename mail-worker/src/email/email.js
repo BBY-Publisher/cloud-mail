@@ -16,6 +16,7 @@ export async function email(message, env, ctx) {
 
 	try {
 
+		const setting = await settingService.query({ env });
 		const {
 			receive,
 			tgChatId,
@@ -31,8 +32,7 @@ export async function email(message, env, ctx) {
 			blackFrom,
 			aiCode,
 			aiCodeFilter,
-			adminEmail
-		} = await settingService.query({ env });
+		} = setting;
 
 		if (receive === settingConst.receive.CLOSE) {
 			message.setReject('Service suspended');
@@ -71,7 +71,7 @@ export async function email(message, env, ctx) {
 			 userRow = await userService.selectByIdIncludeDel({ env: env }, account.userId);
 		}
 
-		if (account && userRow.email !== adminEmail) {
+		if (account && !settingService.isAdmin(setting, userRow.email)) {
 
 			let { banEmail, availDomain } = await roleService.selectByUserId({ env: env }, account.userId);
 

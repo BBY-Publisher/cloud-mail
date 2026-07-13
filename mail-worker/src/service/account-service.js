@@ -19,7 +19,8 @@ const accountService = {
 
 	async add(c, params, userId) {
 
-		const { addEmailVerify , addEmail, manyEmail, addVerifyCount, minEmailPrefix, emailPrefixFilter, domainList, adminEmail } = await settingService.query(c);
+		const setting = await settingService.query(c);
+		const { addEmailVerify , addEmail, manyEmail, addVerifyCount, minEmailPrefix, emailPrefixFilter, domainList } = setting;
 
 		let { email, token } = params;
 
@@ -62,7 +63,7 @@ const accountService = {
 		const userRow = await userService.selectById(c, userId);
 		const roleRow = await roleService.selectById(c, userRow.type);
 
-		if (userRow.email !== adminEmail) {
+		if (!settingService.isAdmin(setting, userRow.email)) {
 
 			if (roleRow.accountCount > 0) {
 				const userAccountCount = await accountService.countUserAccount(c, userId)
