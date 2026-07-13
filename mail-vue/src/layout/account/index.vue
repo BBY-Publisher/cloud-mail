@@ -9,7 +9,14 @@
         <el-card class="item" :class="itemBg(item.accountId)" v-for="(item, index) in accounts" :key="item.accountId"
                  @click="changeAccount(item)">
           <div class="account">
-            {{ item.email }}
+            <el-tag
+                v-if="item.perm && item.perm !== 'owner'"
+                :type="roleTagType(item.perm)"
+                size="small"
+                disable-transitions
+                class="role-tag"
+            >{{ permLabel(item.perm) }}</el-tag>
+            <span>{{ item.email }}</span>
           </div>
           <div class="opt">
             <div class="send-email" @click.stop>
@@ -24,10 +31,22 @@
                 <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"/>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-if="hasPerm('email:send')" @click="openSetName(item)">{{ $t('rename') }}</el-dropdown-item>
-                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="setAsTop(item, index)">{{ $t('pin') }}</el-dropdown-item>
-                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
-                                      @click="remove(item)">{{ $t('delete') }}
+                    <el-dropdown-item
+                        v-if="canManage(item) && hasPerm('email:send')"
+                        @click="openSetName(item)"
+                    >{{ $t('rename') }}</el-dropdown-item>
+                    <el-dropdown-item
+                        v-if="canManage(item)"
+                        @click="openMembers(item)"
+                    >{{ $t('memberManagement') }}</el-dropdown-item>
+                    <el-dropdown-item
+                        v-if="canManage(item) && item.accountId !== userStore.user.account.accountId"
+                        @click="setAsTop(item, index)"
+                    >{{ $t('pin') }}</el-dropdown-item>
+                    <el-dropdown-item
+                        v-if="item.perm === 'owner' && item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
+                        @click="remove(item)"
+                    >{{ $t('delete') }}
                     </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -123,6 +142,15 @@
         </el-button>
       </div>
     </el-dialog>
+
+    <AccountMemberDialog
+        v-if="memberTarget"
+        :open="!!memberTarget"
+        :account-id="memberTarget.accountId"
+        :account-email="memberTarget.email"
+        :can-manage="canManage(memberTarget)"
+        @close="memberTarget = null"
+    />
   </div>
 </template>
 <script setup>
@@ -145,6 +173,7 @@ import {useUserStore} from "@/store/user.js";
 import {hasPerm} from "@/perm/perm.js"
 import {useI18n} from "vue-i18n";
 import {AccountAllReceiveEnum} from "@/enums/account-enum.js";
+import AccountMemberDialog from "@/components/account-member-dialog.vue";
 
 const {t} = useI18n();
 const userStore = useUserStore();
@@ -293,7 +322,9 @@ function setAllReceive(account) {
 
 
 function showNullSetting(item) {
-  return !hasPerm('email:send') && !(item.accountId !== userStore.user.account.accountId && hasPerm('account:delete'))
+  return !hasPerm('email:send')
+      && !(item.accountId !== userStore.user.account.accountId && hasPerm('account:delete'))
+      && !canManage(item)
 }
 
 function itemBg(accountId) {
@@ -381,6 +412,28 @@ async function copyAccount(account) {
       plain: true,
     })
   }
+}
+
+const memberTarget = ref(null)
+
+function canManage(item) {
+  return item.perm === 'owner' || item.perm === 'admin'
+}
+
+function permLabel(perm) {
+  if (perm === 'admin') return t('roleAdmin')
+  if (perm === 'sender') return t('roleSender')
+  if (perm === 'viewer') return t('roleViewer')
+  return ''
+}
+
+function roleTagType(perm) {
+  if (perm === 'admin') return ''
+  return 'info'
+}
+
+function openMembers(item) {
+  memberTarget.value = item
 }
 
 function getAccountList() {
@@ -592,6 +645,19 @@ path[fill="#ffdda1"] {
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .role-tag {
+        flex-shrink: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 10px;
+        height: 18px;
+        line-height: 18px;
+        padding: 0 6px;
+      }
     }
 
     .opt {

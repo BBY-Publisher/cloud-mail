@@ -188,6 +188,12 @@
       </div>
     </el-dialog>
     <el-dialog class="account-dialog" v-model="accountShow" :title="t('userAccount')" @closed="resetAccountList" >
+      <div class="account-toolbar">
+        <el-button type="primary" size="small" @click="openAdminAdd">
+          <Icon icon="ion:add-outline" width="14" height="14" style="margin-right: 4px;position: relative;top:2px"/>
+          {{ t('adminAddMailbox') }}
+        </el-button>
+      </div>
       <el-table :data="accountList" style="height: 480px" v-loading="accountLoading" element-loading-background="transparent" :empty-text="accountLoading ? '' : null">
         <el-table-column property="email" :label="t('emailAccount')" >
           <template #default="props">
@@ -206,6 +212,7 @@
               <el-button type="primary" size="small">{{t('action')}}</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item @click="openAdminRename(props.row)">{{ $t('rename') }}</el-dropdown-item>
                   <el-dropdown-item @click="deleteAccount(props.row)">{{ $t('delete') }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -223,6 +230,40 @@
             :total="accountParams.total"
             @current-change="accountCurChange"
         />
+      </div>
+    </el-dialog>
+    <el-dialog v-model="adminAddShow" :title="t('adminAddMailbox')" width="420" @closed="resetAdminAddForm">
+      <div class="admin-add-body">
+        <el-input v-model="adminAddForm.email" type="text" :placeholder="t('emailAccount')" autocomplete="off">
+          <template #append>
+            <el-select
+                ref="adminAddSelect"
+                v-model="adminAddForm.suffix"
+                :placeholder="t('select')"
+                class="select"
+            >
+              <el-option
+                  v-for="item in domainList"
+                  :key="item"
+                  :label="item"
+                  :value="item"
+              />
+            </el-select>
+            <div @click.stop="openAdminAddSelect">
+              <span>{{ adminAddForm.suffix }}</span>
+              <Icon class="setting-icon" icon="mingcute:down-small-fill" width="20" height="20"/>
+            </div>
+          </template>
+        </el-input>
+        <el-input v-model="adminAddForm.name" :placeholder="`${t('rename')} (${t('optional')})`" :maxlength="30"/>
+        <el-button class="btn" type="primary" :loading="adminAddLoading" @click="submitAdminAdd">{{ t('add') }}</el-button>
+      </div>
+    </el-dialog>
+    <el-dialog v-model="adminRenameShow" :title="t('adminRenameMailbox')" width="420">
+      <div class="admin-add-body">
+        <el-input :model-value="adminRenameTarget?.email || ''" disabled/>
+        <el-input v-model="adminRenameValue" :placeholder="t('rename')" :maxlength="30"/>
+        <el-button class="btn" type="primary" :loading="adminRenameLoading" @click="submitAdminRename">{{ t('save') }}</el-button>
       </div>
     </el-dialog>
     <el-dialog class="account-dialog" v-model="detailsShow" :title="t('userDetails')"  >
@@ -376,7 +417,9 @@ import {
   userRestSendCount,
   userRestore,
   userDeleteAccount,
-  userAllAccount
+  userAllAccount,
+  adminAccountAdd,
+  adminAccountRename
 } from '@/request/user.js'
 import {roleSelectUse} from "@/request/role.js";
 import {Icon} from "@iconify/vue";
@@ -475,6 +518,20 @@ const accountParams = reactive({
   userId: 0,
 })
 
+const adminAddShow = ref(false)
+const adminAddLoading = ref(false)
+const adminAddSelect = ref({})
+const adminAddForm = reactive({
+  email: '',
+  suffix: domainList[0] || '',
+  name: '',
+})
+
+const adminRenameShow = ref(false)
+const adminRenameTarget = ref(null)
+const adminRenameValue = ref('')
+const adminRenameLoading = ref(false)
+
 roleSelectUse().then(list => {
   roleList.length = 0
   roleList.push(...list)
@@ -566,6 +623,60 @@ function deleteAccount(account) {
       })
     })
   });
+}
+
+function openAdminAdd() {
+  adminAddForm.email = ''
+  adminAddForm.name = ''
+  adminAddForm.suffix = domainList[0] || ''
+  adminAddShow.value = true
+}
+
+function openAdminAddSelect() {
+  adminAddSelect.value?.toggleMenu()
+}
+
+function resetAdminAddForm() {
+  adminAddForm.email = ''
+  adminAddForm.name = ''
+}
+
+function submitAdminAdd() {
+  if (!adminAddForm.email) {
+    ElMessage({message: t('emptyEmailMsg'), type: 'error', plain: true})
+    return
+  }
+  const full = adminAddForm.email + adminAddForm.suffix
+  if (!isEmail(full)) {
+    ElMessage({message: t('notEmailMsg'), type: 'error', plain: true})
+    return
+  }
+  adminAddLoading.value = true
+  adminAccountAdd(accountParams.userId, full, adminAddForm.name || undefined).then(() => {
+    ElMessage({message: t('addSuccessMsg'), type: 'success', plain: true})
+    adminAddShow.value = false
+    getAccountList()
+  }).finally(() => {
+    adminAddLoading.value = false
+  })
+}
+
+function openAdminRename(account) {
+  adminRenameTarget.value = account
+  adminRenameValue.value = account.name ?? ''
+  adminRenameShow.value = true
+}
+
+function submitAdminRename() {
+  if (!adminRenameTarget.value) return
+  adminRenameLoading.value = true
+  adminAccountRename(adminRenameTarget.value.accountId, adminRenameValue.value).then(() => {
+    ElMessage({message: t('saveSuccessMsg'), type: 'success', plain: true})
+    adminRenameShow.value = false
+    getAccountList()
+  }).finally(() => {
+    adminRenameLoading.value = false
+  })
 }
 function accountCurChange(e) {
   accountParams.num = e
@@ -1080,6 +1191,18 @@ function adjustWidth() {
     margin-right: 20px !important;
     margin-left: 20px !important;
   }
+}
+
+.account-toolbar {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.admin-add-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .header-actions {

@@ -369,7 +369,21 @@ const en = {
     syncConfirm: 'Fetch sent emails from the provider and sync them into the system?',
     syncSuccess: 'Sync complete. Added {inserted}, skipped {skipped}',
     syncFailed: 'Sync failed',
-    syncNoProvider: 'Resend or Brevo is not configured'
+    syncNoProvider: 'Resend or Brevo is not configured',
+    myMailboxes: 'My Mailboxes',
+    sharedWithMe: 'Shared with me',
+    mailboxOwner: 'Owner',
+    memberManagement: 'Member Management',
+    addMember: 'Add Member',
+    memberEmail: 'Member Email',
+    memberRole: 'Member Role',
+    roleViewer: 'Viewer',
+    roleSender: 'Sender',
+    roleAdmin: 'Admin',
+    removeMember: 'Remove Member',
+    memberCount: 'Members',
+    adminAddMailbox: 'Add Mailbox',
+    adminRenameMailbox: 'Rename Mailbox',
 }
 
 export default en

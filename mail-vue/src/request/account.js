@@ -23,3 +23,19 @@ export function accountSetAllReceive(accountId) {
 export function accountSetAsTop(accountId) {
     return http.put('/account/setAsTop', {accountId})
 }
+
+export function accountMemberList(accountId) {
+    return http.get('/account/member/list', {params: {accountId}});
+}
+
+export function accountMemberAdd(accountId, email, role) {
+    return http.post('/account/member/add', {accountId, email, role});
+}
+
+export function accountMemberRemove(accountId, userId) {
+    return http.delete('/account/member/remove', {params: {accountId, userId}});
+}
+
+export function accountMemberSetRole(accountId, userId, role) {
+    return http.put('/account/member/role', {accountId, userId, role});
+}

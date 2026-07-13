@@ -369,6 +369,20 @@ const zh = {
     syncConfirm: '确认从邮件服务商拉取已发送的邮件并同步到系统中？',
     syncSuccess: '同步完成，新增 {inserted} 封，跳过 {skipped} 封',
     syncFailed: '同步失败',
-    syncNoProvider: '未配置 Resend 或 Brevo'
+    syncNoProvider: '未配置 Resend 或 Brevo',
+    myMailboxes: '我的邮箱',
+    sharedWithMe: '他人共享',
+    mailboxOwner: '所有者',
+    memberManagement: '成员管理',
+    addMember: '添加成员',
+    memberEmail: '成员邮箱',
+    memberRole: '成员角色',
+    roleViewer: '查看者',
+    roleSender: '发件者',
+    roleAdmin: '管理员',
+    removeMember: '移除成员',
+    memberCount: '成员',
+    adminAddMailbox: '添加邮箱',
+    adminRenameMailbox: '重命名邮箱',
 }
 export default zh

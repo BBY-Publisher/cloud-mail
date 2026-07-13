@@ -41,3 +41,15 @@ export function userAllAccount(userId, num, size) {
 export function userDeleteAccount(accountId) {
     return http.delete('/user/deleteAccount', {params:{accountId}})
 }
+
+export function adminAccountAdd(userId, email, name) {
+    return http.post('/admin/account/add', {userId, email, name})
+}
+
+export function adminAccountRename(accountId, name) {
+    return http.put('/admin/account/rename', {accountId, name})
+}
+
+export function adminAccountDelete(accountId) {
+    return http.delete('/admin/account/delete', {params:{accountId}})
+}

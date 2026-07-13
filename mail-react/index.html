@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="oklch(0.985 0 0)" id="theme-color-meta">
+  <meta name="description" content="Cloud Mail is a serverless responsive email service for sending and receiving mail at the edge.">
+  <title>Cloud Mail</title>
+  <link rel="icon" href="/mail-pwa.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <script>
+    try {
+      var uiStoreStr = localStorage.getItem('ui');
+      if (uiStoreStr) {
+        var uiStore = JSON.parse(uiStoreStr);
+        var root = document.documentElement;
+        var dark = uiStore && uiStore.state && uiStore.state.dark;
+        if (dark) root.setAttribute('class', 'dark');
+        var metaTag = document.getElementById('theme-color-meta');
+        var isMobile = !window.matchMedia('(pointer: fine) and (hover: hover)').matches;
+        metaTag.setAttribute('content', dark
+          ? (isMobile ? 'oklch(0.13 0.005 250)' : 'oklch(0.13 0.005 250)')
+          : (isMobile ? 'oklch(0.985 0 0)' : 'oklch(0.985 0 0)'));
+      }
+    } catch (e) {}
+  </script>
+</head>
+<style>
+  html { background: oklch(0.985 0 0); }
+  .dark { background: oklch(0.13 0.005 250); }
+  #loading-first {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 500;
+    background: oklch(0.985 0 0);
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+  }
+  .dark #loading-first { background: oklch(0.13 0.005 250); }
+  .loading-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  .loading-image { width: 56px; height: 56px; object-fit: contain; }
+  .loading-progress {
+    position: relative;
+    width: 64px;
+    height: 2px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: oklch(0.92 0.003 250);
+  }
+  .dark .loading-progress { background: oklch(1 0 0 / 8%); }
+  .loading-progress::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: oklch(0.205 0.005 250);
+    transform: scaleX(0);
+    transform-origin: left center;
+    animation: loading-progress-grow 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .dark .loading-progress::before { background: oklch(0.96 0.003 250); }
+  @keyframes loading-progress-grow {
+    0% { transform: scaleX(0); }
+    100% { transform: scaleX(1); }
+  }
+</style>
+<body>
+<div id="loading-first">
+  <div class="loading-stack">
+    <img class="loading-image" src="/mail-pwa.png" alt="">
+    <div class="loading-progress" aria-hidden="true"></div>
+  </div>
+</div>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

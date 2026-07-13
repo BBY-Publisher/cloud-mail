@@ -30,6 +30,13 @@
         </div>
       </div>
     </div>
+    <div class="mailboxes">
+      <div class="title">{{$t('myMailboxes')}}</div>
+      <div style="color: var(--regular-text-color);">{{$t('sharedWithMe')}}</div>
+      <div style="margin-top: 10px;">
+        <el-button type="primary" @click="goMyMailboxes">{{$t('myMailboxes')}}</el-button>
+      </div>
+    </div>
     <div class="language">
       <div class="title">{{$t('language')}}</div>
       <el-select
@@ -131,6 +138,10 @@ function changeLang(lang) {
   }
   localStorage.setItem('setting', JSON.stringify({...setting, lang}))
   window.location.reload()
+}
+
+function goMyMailboxes() {
+  router.push('/settings/my-mailboxes')
 }
 
 const pwdShow = ref(false)
@@ -284,6 +295,14 @@ function submitPwd() {
     .language-select {
       width: 100px;
     }
+  }
+
+  .mailboxes {
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 40px;
   }
 
   .del-email {

@@ -52,6 +52,16 @@ const routes = [
                 }
             },
             {
+                path: '/settings/my-mailboxes',
+                name: 'myMailbox',
+                component: () => import('@/views/my-mailbox/index.vue'),
+                meta: {
+                    title: 'myMailboxes',
+                    name: 'myMailbox',
+                    menu: false
+                }
+            },
+            {
                 path: '/webhook-event',
                 name: 'webhook-event',
                 component: () => import('@/views/webhook-event/index.vue'),
