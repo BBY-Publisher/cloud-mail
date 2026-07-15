@@ -30,6 +30,7 @@ import {
 	prepareBrevoEmailContent,
 	resolveBrevoPublicBaseUrl
 } from '../utils/brevo-email-utils';
+import { parseEmailIds } from '../utils/email-id-utils';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -1278,7 +1279,7 @@ const emailService = {
 
 	async read(c, params, userId) {
 		const { emailIds } = params;
-		const emailIdList = (emailIds || '').split(',').map(Number).filter(n => !isNaN(n));
+		const emailIdList = parseEmailIds(emailIds);
 		if (emailIdList.length === 0) return;
 
 		const emailRows = await orm(c).select({ accountId: email.accountId }).from(email)
