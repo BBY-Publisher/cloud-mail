@@ -15,7 +15,7 @@ enabled = true
 #binding = "kv"			#kv绑定名默认不可修改
 #id = ""					#kv数据库id
 
-#[[r2_buckets]]
+[[r2_buckets]]
 binding = "r2"			#r2对象存储绑定名默认不可修改
 bucket_name = "cloud-mail"		#r2对象存储桶的名字
 
