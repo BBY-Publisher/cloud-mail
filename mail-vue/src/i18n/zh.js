@@ -117,6 +117,8 @@ const zh = {
     roleDesc: '权限身份',
     noSubject: '无主题',
     recipient: '收件人',
+    cc: '抄送',
+    bcc: '密送',
     delivered: '发送成功',
     complained: '被标记为垃圾',
     delayed: '发送被延迟',

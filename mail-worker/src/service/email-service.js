@@ -205,6 +205,8 @@ const emailService = {
 			sendType, //发件类型
 			emailId, //邮件id，如果是回复邮件会带
 			receiveEmail, //收件人邮箱
+			cc = [], //抄送
+			bcc = [], //密送
 			text, //邮件纯文本
 			content, //邮件内容
 			subject, //邮件标题
@@ -225,7 +227,8 @@ const emailService = {
 		const roleRow = await roleService.selectById(c, userRow.type);
 
 		//判断接收方是不是全部为站内邮箱
-		const allInternal = receiveEmail.every(email => {
+		const allRecipients = [...receiveEmail, ...cc, ...bcc];
+		const allInternal = allRecipients.every(email => {
 			const domain = '@' + emailUtils.getDomain(email);
 			return domainList.includes(domain);
 		});
@@ -343,6 +346,8 @@ const emailService = {
 				name,
 				accountEmail: accountRow.email,
 				receiveEmail,
+				cc,
+				bcc,
 				subject,
 				text,
 				html,
@@ -395,6 +400,8 @@ const emailService = {
 		});
 
 		emailData.recipient = JSON.stringify(recipient);
+		emailData.cc = JSON.stringify((cc || []).map(item => ({ address: item, name: '' })));
+		emailData.bcc = JSON.stringify((bcc || []).map(item => ({ address: item, name: '' })));
 
 		if (sendType === 'reply') {
 			emailData.inReplyTo = emailRow.messageId;
@@ -430,7 +437,12 @@ const emailService = {
 
 		//如果全是站内接收方，直接写入数据库
 		if (allInternal) {
-			await this.HandleOnSiteEmail(c, receiveEmail, emailResult, attList);
+			const recipientItems = [
+				...receiveEmail.map(email => ({ email, kind: 'to' })),
+				...cc.map(email => ({ email, kind: 'cc' })),
+				...bcc.map(email => ({ email, kind: 'bcc' }))
+			];
+			await this.HandleOnSiteEmail(c, recipientItems, emailResult, attList);
 		}
 
 		const dateStr = dayjs().format('YYYY-MM-DD');
@@ -505,9 +517,15 @@ const emailService = {
 	},
 
 	async sendByCloudflareEmail(c, params) {
+		// CF Email binding 不支持 cc/bcc 字段，统一并入 to 以保证送达
+		const to = [
+			...params.receiveEmail,
+			...(params.cc || []),
+			...(params.bcc || [])
+		];
 		const sendForm = {
 			from: { email: params.accountEmail, name: params.name },
-			to: [...params.receiveEmail],
+			to,
 			subject: params.subject
 		};
 
@@ -554,6 +572,9 @@ const emailService = {
 			attachments: await this.toResendAttachments(params.attachments)
 		};
 
+		if (params.cc?.length) sendForm.cc = [...params.cc];
+		if (params.bcc?.length) sendForm.bcc = [...params.bcc];
+
 		if (params.sendType === 'reply' && params.messageId) {
 			sendForm.headers = {
 				'in-reply-to': params.messageId
@@ -583,8 +604,15 @@ const emailService = {
 			subject: params.subject
 		};
 
+		if (params.cc?.length) {
+			request.cc = params.cc.map(email => ({ email }));
+		}
+		if (params.bcc?.length) {
+			request.bcc = params.bcc.map(email => ({ email }));
+		}
+
 		if (params.html) request.htmlContent = params.html;
-		if (params.text) request.textContent = params.text;
+		// if (params.text) request.textContent = params.text;
 
 		const attachments = await this.toBrevoAttachments(params.attachments);
 		if (attachments.length > 0) request.attachment = attachments;
@@ -739,13 +767,16 @@ const emailService = {
 	},
 
 	//处理站内邮件发送
-	async HandleOnSiteEmail(c, receiveEmail, sendEmailData, attList) {
+	async HandleOnSiteEmail(c, recipientItems, sendEmailData, attList) {
 
 		const setting = await settingService.query(c);
 		const { noRecipient } = setting;
 
+		//recipientItems: [{email, kind: 'to'|'cc'|'bcc'}]
+		const emails = recipientItems.map(r => r.email);
+
 		//查询所有收件人账号信息
-		let accountList = await orm(c).select().from(account).where(inArray(account.email, receiveEmail)).all();
+		let accountList = await orm(c).select().from(account).where(inArray(account.email, emails)).all();
 
 		//查询所有收件人权限身份
 		const userIds = accountList.map(accountRow => accountRow.userId);
@@ -753,8 +784,10 @@ const emailService = {
 
 		//封装数据库准备保存到数据库
 		const emailDataList = [];
+		const kindList = [];
 
-		for (const email of receiveEmail) {
+		for (const { email, kind } of recipientItems) {
+			kindList.push(kind);
 
 			//把发件人邮件改成收件
 			const emailValues = {...sendEmailData}
@@ -833,14 +866,16 @@ const emailService = {
 
 		}
 
-		const bouncedEmail = emailDataList.find(emailRow => emailRow.status === emailConst.status.BOUNCED);
-
+		const bouncedToIndex = emailDataList.findIndex((emailRow, idx) =>
+			emailRow.status === emailConst.status.BOUNCED && kindList[idx] === 'to'
+		);
+		const bouncedToEmail = bouncedToIndex >= 0 ? emailDataList[bouncedToIndex] : null;
 
 		let status = emailConst.status.DELIVERED;
 		let message = ''
-		//如果有拒收邮件，就把发件人的邮件改成拒收
-		if (bouncedEmail) {
-			const messageJson = { message: bouncedEmail.message };
+		//只有"收件人"被拒收时，才把发件人的邮件标记为拒收；cc/bcc 拒收不影响发件结果
+		if (bouncedToEmail) {
+			const messageJson = { message: bouncedToEmail.message };
 			message = JSON.stringify(messageJson);
 			status = emailConst.status.BOUNCED;
 		}
