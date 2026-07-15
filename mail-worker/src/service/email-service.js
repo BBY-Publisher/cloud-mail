@@ -23,8 +23,10 @@ import domainUtils from '../utils/domain-uitls';
 import account from "../entity/account";
 import { att } from '../entity/att';
 import telegramService from './telegram-service';
+import r2Service from './r2-service';
 import signatureService from './signature-service';
 import { BrevoClient } from '@getbrevo/brevo';
+import { prepareBrevoEmailContent } from '../utils/brevo-email-utils';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -364,7 +366,7 @@ const emailService = {
 				} else if (provider === PROVIDER.RESEND) {
 					sendResult = await this.sendByResend(resendToken, sendParams);
 				} else if (provider === PROVIDER.BREVO) {
-					sendResult = await this.sendByBrevo(brevoApiKey, sendParams);
+					sendResult = await this.sendByBrevo(c, brevoApiKey, sendParams, r2Domain);
 				}
 			} catch (e) {
 				providerError = e;
@@ -607,8 +609,25 @@ const emailService = {
 		return await resend.emails.send(sendForm);
 	},
 
-	async sendByBrevo(brevoApiKey, params) {
+	async sendByBrevo(c, brevoApiKey, params, r2Domain) {
 		const client = new BrevoClient({ apiKey: brevoApiKey });
+		const brevoContent = prepareBrevoEmailContent({
+			html: params.html,
+			attachments: params.attachments,
+			publicBaseUrl: r2Domain
+		});
+
+		for (const attachment of brevoContent.inlineAttachments) {
+			if (!attachment.buff) {
+				continue;
+			}
+
+			await r2Service.putObj(c, attachment.key, attachment.buff, {
+				contentType: attachment.mimeType,
+				cacheControl: 'max-age=259200',
+				contentDisposition: `inline;filename=${attachment.filename}`
+			});
+		}
 
 		const senderName = params.name || emailUtils.getName(params.accountEmail);
 		const request = {
@@ -631,10 +650,10 @@ const emailService = {
 			request.bcc = params.bcc.map(email => ({ email }));
 		}
 
-		if (params.html) request.htmlContent = params.html;
+		if (brevoContent.html) request.htmlContent = brevoContent.html;
 		// if (params.text) request.textContent = params.text;
 
-		const attachments = await this.toBrevoAttachments(params.attachments);
+		const attachments = await this.toBrevoAttachments(brevoContent.attachments);
 		if (attachments.length > 0) request.attachment = attachments;
 
 		if (params.sendType === 'reply' && params.messageId) {
@@ -698,7 +717,7 @@ const emailService = {
 		return result;
 	},
 
-	// Brevo 的 attachment 数组只接受 { content: base64, name } 两字段,不需要 contentType
+	// Brevo 的 attachment 数组只接受 { content: base64, name } 两字段，内嵌图片已改为正文 URL。
 	async toBrevoAttachments(attachments = []) {
 		const result = [];
 
