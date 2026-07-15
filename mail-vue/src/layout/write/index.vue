@@ -531,6 +531,9 @@ async function sendEmail() {
     show.value = false
     resetForm();
   }).catch((e) => {
+    if (Array.isArray(e?.data)) {
+      e.data.forEach(item => emailStore.sendScroll?.addItem(item))
+    }
     ElNotification({
       title: t('sendFailMsg'),
       type: e.code === 403 ? 'warning' : 'error',

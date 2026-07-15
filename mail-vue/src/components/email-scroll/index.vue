@@ -880,7 +880,7 @@ function handleList(list) {
       1: { icon: 'bi:send-arrow-up-fill',  color: '#51C76B', content: t('sent') },
       2: { icon: 'bi:send-check-fill',     color: '#51C76B', content: t('delivered') },
       3: { icon: 'bi:send-x-fill',         color: '#F56C6C', content: t('bounced') },
-      8: { icon: 'bi:send-x-fill',         color: '#F56C6C', content: t('bounced') },
+      8: { icon: 'bi:send-x-fill',         color: '#F56C6C', content: t('sendFailed') },
       4: { icon: 'bi:send-exclamation-fill', color: '#FBBD08', content: t('complained') },
       5: { icon: 'bi:send-arrow-up-fill',  color: '#FBBD08', content: t('delayed') },
       7: { icon: 'ic:round-mark-email-read', color: '#FBBD08', content: t('noRecipient') },

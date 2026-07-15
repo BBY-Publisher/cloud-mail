@@ -338,6 +338,7 @@ const emailService = {
 		const referencesValue = references.trim();
 
 		let sendResult = {};
+		let providerError = null;
 
 		//存在站外邮箱时，根据 pickProvider 选择具体发送通道
 		if (!allInternal && provider) {
@@ -357,22 +358,28 @@ const emailService = {
 				references: referencesValue
 			};
 
-			if (provider === PROVIDER.CF) {
-				sendResult = await this.sendByCloudflareEmail(c, sendParams);
-			} else if (provider === PROVIDER.RESEND) {
-				sendResult = await this.sendByResend(resendToken, sendParams);
-			} else if (provider === PROVIDER.BREVO) {
-				sendResult = await this.sendByBrevo(brevoApiKey, sendParams);
+			try {
+				if (provider === PROVIDER.CF) {
+					sendResult = await this.sendByCloudflareEmail(c, sendParams);
+				} else if (provider === PROVIDER.RESEND) {
+					sendResult = await this.sendByResend(resendToken, sendParams);
+				} else if (provider === PROVIDER.BREVO) {
+					sendResult = await this.sendByBrevo(brevoApiKey, sendParams);
+				}
+			} catch (e) {
+				providerError = e;
 			}
 
 		}
 
-		const { data, error } = sendResult;
-
-
-		if (error) {
-			throw new BizError(error.message);
+		//将 provider 抛出的异常归一为 { data, error } 结构
+		if (providerError) {
+			sendResult = { data: null, error: { message: providerError.message || String(providerError) } };
 		}
+
+		const { data, error } = sendResult;
+		const isSendError = !!error;
+		const errorMessage = error?.message || '';
 
 		imageDataList = imageDataList.map(item => ({...item, contentId: `<${item.contentId}>`}))
 
@@ -387,11 +394,18 @@ const emailService = {
 		emailData.content = html;
 		emailData.text = text;
 		emailData.accountId = accountId;
-		emailData.status = provider === PROVIDER.CF ? emailConst.status.DELIVERED : emailConst.status.SENT;
 		emailData.type = emailConst.type.SEND;
 		emailData.userId = userId;
 		emailData.resendEmailId = data?.id;
 		emailData.provider = provider;
+
+		if (isSendError) {
+			//发送失败：标记为 FAILED，错误信息存入 message（保持与 BOUNCED 一致的 JSON 格式）
+			emailData.status = emailConst.status.FAILED;
+			emailData.message = JSON.stringify({ message: errorMessage });
+		} else {
+			emailData.status = provider === PROVIDER.CF ? emailConst.status.DELIVERED : emailConst.status.SENT;
+		}
 
 		const recipient = [];
 
@@ -408,17 +422,17 @@ const emailService = {
 			emailData.relation = referencesValue;
 		}
 
-		//如果权限有发送次数增加用户发送次数
-		if (roleRow.sendCount && roleRow.sendType !== 'internal') {
+		//如果权限有发送次数增加用户发送次数（仅成功时）
+		if (!isSendError && roleRow.sendCount && roleRow.sendType !== 'internal') {
 			await userService.incrUserSendCount(c, receiveEmail.length, userId);
 		}
 
 		//保存到数据库并返回结果
 		const emailResult = await orm(c).insert(email).values(emailData).returning().get();
 
-		//保存内嵌附件
+		//保存内嵌附件（失败时也保存，方便用户查看/重发）
 		if (imageDataList.length > 0) {
-			if (imageDataList.length > 10) {
+			if (imageDataList.length > 50) {
 				throw new BizError(t('imageAttLimit'));
 			}
 			await attService.saveArticleAtt(c, imageDataList, userId, accountId, emailResult.emailId);
@@ -435,8 +449,8 @@ const emailService = {
 		const attList = await attService.selectByEmailIds(c, [emailResult.emailId]);
 		emailResult.attList = attList;
 
-		//如果全是站内接收方，直接写入数据库
-		if (allInternal) {
+		//如果全是站内接收方，直接写入数据库（仅成功时）
+		if (!isSendError && allInternal) {
 			const recipientItems = [
 				...receiveEmail.map(email => ({ email, kind: 'to' })),
 				...cc.map(email => ({ email, kind: 'cc' })),
@@ -445,15 +459,21 @@ const emailService = {
 			await this.HandleOnSiteEmail(c, recipientItems, emailResult, attList);
 		}
 
-		const dateStr = dayjs().format('YYYY-MM-DD');
-		let daySendTotal = await c.env.kv.get(kvConst.SEND_DAY_COUNT + dateStr);
+		//记录每天发件次数统计（仅成功时）
+		if (!isSendError) {
+			const dateStr = dayjs().format('YYYY-MM-DD');
+			let daySendTotal = await c.env.kv.get(kvConst.SEND_DAY_COUNT + dateStr);
 
-		//记录每天发件次数统计
-		if (!daySendTotal) {
-			await c.env.kv.put(kvConst.SEND_DAY_COUNT + dateStr, JSON.stringify(receiveEmail.length), { expirationTtl: 60 * 60 * 24 });
-		} else  {
-			daySendTotal = Number(daySendTotal) + receiveEmail.length
-			await c.env.kv.put(kvConst.SEND_DAY_COUNT + dateStr, JSON.stringify(daySendTotal), { expirationTtl: 60 * 60 * 24 });
+			if (!daySendTotal) {
+				await c.env.kv.put(kvConst.SEND_DAY_COUNT + dateStr, JSON.stringify(receiveEmail.length), { expirationTtl: 60 * 60 * 24 });
+			} else  {
+				daySendTotal = Number(daySendTotal) + receiveEmail.length
+				await c.env.kv.put(kvConst.SEND_DAY_COUNT + dateStr, JSON.stringify(daySendTotal), { expirationTtl: 60 * 60 * 24 });
+			}
+		}
+
+		if (isSendError) {
+			throw new BizError(errorMessage, 502, [emailResult]);
 		}
 
 		return [ emailResult ];

@@ -123,6 +123,7 @@ const en = {
     complained: 'Complained',
     delayed: 'Delayed',
     bounced: 'Bounced',
+    sendFailed: 'Failed to send',
     attachments: 'Attachments',
     attCount: 'Total {total}',
     emailCount: 'Total {total}',
