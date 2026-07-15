@@ -5,6 +5,23 @@ function normalizeContentId(contentId = '') {
 	return contentId.replace(/^cid:/i, '').replace(/^<|>$/g, '');
 }
 
+export function resolveBrevoPublicBaseUrl({ configuredBaseUrl, storageType, requestUrl }) {
+	const configuredDomain = domainUtils.toOssDomain(String(configuredBaseUrl || '').trim());
+	if (configuredDomain) {
+		return configuredDomain;
+	}
+
+	if (storageType !== 'KV' || !requestUrl) {
+		return '';
+	}
+
+	try {
+		return new URL(requestUrl).origin;
+	} catch (_) {
+		return '';
+	}
+}
+
 export function prepareBrevoEmailContent({ html = '', attachments = [], publicBaseUrl }) {
 	const inlineAttachments = attachments.filter(attachment => attachment.contentId);
 	const regularAttachments = attachments.filter(attachment => !attachment.contentId);

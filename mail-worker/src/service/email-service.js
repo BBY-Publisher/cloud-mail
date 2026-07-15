@@ -26,7 +26,10 @@ import telegramService from './telegram-service';
 import r2Service from './r2-service';
 import signatureService from './signature-service';
 import { BrevoClient } from '@getbrevo/brevo';
-import { prepareBrevoEmailContent } from '../utils/brevo-email-utils';
+import {
+	prepareBrevoEmailContent,
+	resolveBrevoPublicBaseUrl
+} from '../utils/brevo-email-utils';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -611,10 +614,15 @@ const emailService = {
 
 	async sendByBrevo(c, brevoApiKey, params, r2Domain) {
 		const client = new BrevoClient({ apiKey: brevoApiKey });
+		const publicBaseUrl = resolveBrevoPublicBaseUrl({
+			configuredBaseUrl: r2Domain,
+			storageType: r2Domain ? null : await r2Service.storageType(c),
+			requestUrl: c.req?.url
+		});
 		const brevoContent = prepareBrevoEmailContent({
 			html: params.html,
 			attachments: params.attachments,
-			publicBaseUrl: r2Domain
+			publicBaseUrl
 		});
 
 		for (const attachment of brevoContent.inlineAttachments) {

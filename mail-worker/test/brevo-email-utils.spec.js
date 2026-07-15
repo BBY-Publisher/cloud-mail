@@ -1,5 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { prepareBrevoEmailContent } from '../src/utils/brevo-email-utils';
+import {
+	prepareBrevoEmailContent,
+	resolveBrevoPublicBaseUrl
+} from '../src/utils/brevo-email-utils';
+
+describe('resolveBrevoPublicBaseUrl', () => {
+	it('uses the Worker request origin for KV storage', () => {
+		expect(resolveBrevoPublicBaseUrl({
+			configuredBaseUrl: '',
+			storageType: 'KV',
+			requestUrl: 'https://mail.example.com/api/email/send?draft=1'
+		})).toBe('https://mail.example.com');
+	});
+
+	it('prefers the configured object storage domain', () => {
+		expect(resolveBrevoPublicBaseUrl({
+			configuredBaseUrl: 'https://assets.example.com',
+			storageType: 'KV',
+			requestUrl: 'https://mail.example.com/api/email/send'
+		})).toBe('https://assets.example.com');
+	});
+
+	it('does not use the Worker origin for R2 or S3 storage', () => {
+		for (const storageType of ['R2', 'S3']) {
+			expect(resolveBrevoPublicBaseUrl({
+				configuredBaseUrl: '',
+				storageType,
+				requestUrl: 'https://mail.example.com/api/email/send'
+			})).toBe('');
+		}
+	});
+});
 
 describe('prepareBrevoEmailContent', () => {
 	it('replaces CID image sources with public object URLs', () => {
