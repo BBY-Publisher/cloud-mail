@@ -306,6 +306,23 @@
                   </div>
                 </div>
               </div>
+              <div class="setting-item">
+                <div>
+                  <span>{{ $t('migrateKvAttachments') }}</span>
+                  <el-tooltip effect="dark" :content="$t('migrateKvAttachmentsDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
+                <div class="r2domain">
+                  <el-button v-perm="'setting:set'" class="opt-button" size="small" type="primary"
+                             :loading="attachmentMigrationLoading" :disabled="!setting.hasR2"
+                             @click="migrateKvAttachments">
+                    {{ attachmentMigrationLoading
+                      ? $t('migratingAttachments', { count: attachmentMigrationCount })
+                      : $t('startMigration') }}
+                  </el-button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -902,7 +919,7 @@
 
 <script setup>
 import {computed, defineOptions, nextTick, reactive, ref} from "vue";
-import {deleteBackground, setBackground, setBlackList, settingQuery, settingSet} from "@/request/setting.js";
+import {deleteBackground, migrateAttachments, setBackground, setBlackList, settingQuery, settingSet} from "@/request/setting.js";
 import {useSettingStore} from "@/store/setting.js";
 import {useUiStore} from "@/store/ui.js";
 import {useUserStore} from "@/store/user.js";
@@ -950,6 +967,8 @@ const {settings: setting} = storeToRefs(settingStore);
 const editTitle = ref('')
 const settingLoading = ref(false)
 const clearS3Loading = ref(false)
+const attachmentMigrationLoading = ref(false)
+const attachmentMigrationCount = ref(0)
 const r2DomainInput = ref('')
 const loginOpacity = ref(0)
 const minEmailPrefix = ref(0)
@@ -1517,6 +1536,58 @@ function openCut() {
 function saveR2domain() {
   const settingForm = {r2Domain: r2DomainInput.value}
   editSetting(settingForm)
+}
+
+async function migrateKvAttachments() {
+  try {
+    await ElMessageBox.confirm(t('migrateKvAttachmentsConfirm'), t('migrateKvAttachments'), {
+      confirmButtonText: t('confirm'),
+      cancelButtonText: t('cancel'),
+      type: 'warning'
+    })
+  } catch (_) {
+    return
+  }
+
+  attachmentMigrationLoading.value = true
+  attachmentMigrationCount.value = 0
+  let skipped = 0
+  let cursor = null
+
+  try {
+    while (true) {
+      const migration = await migrateAttachments({cursor, limit: 20})
+      attachmentMigrationCount.value += migration.migrated
+      skipped += migration.skipped
+
+      if (migration.failed.length > 0) {
+        throw new Error(`${migration.failed[0].key}: ${migration.failed[0].message}`)
+      }
+
+      if (migration.complete) {
+        break
+      }
+
+      cursor = migration.cursor
+    }
+
+    ElMessage({
+      message: t('migrateKvAttachmentsSuccess', {
+        migrated: attachmentMigrationCount.value,
+        skipped
+      }),
+      type: 'success',
+      plain: true
+    })
+  } catch (error) {
+    ElMessage({
+      message: t('migrateKvAttachmentsFailed', { message: error.message || String(error) }),
+      type: 'error',
+      plain: true
+    })
+  } finally {
+    attachmentMigrationLoading.value = false
+  }
 }
 
 function openResendForm() {

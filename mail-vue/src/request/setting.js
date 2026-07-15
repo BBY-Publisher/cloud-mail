@@ -23,3 +23,7 @@ export function deleteBackground() {
 export function setBlackList(params) {
     return http.put('/setting/setBlacklist', params)
 }
+
+export function migrateAttachments(params) {
+    return http.post('/setting/migrateAttachments', params)
+}
