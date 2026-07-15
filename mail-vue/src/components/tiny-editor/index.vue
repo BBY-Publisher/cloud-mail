@@ -136,20 +136,36 @@ function initEditor() {
       const input = document.createElement('input');
       input.setAttribute('type', 'file');
       input.setAttribute('accept', 'image/*');
+      input.setAttribute('multiple', 'multiple');
 
       input.addEventListener('change', async (e) => {
-        let file = e.target.files[0];
-        const reader = new FileReader();
-        reader.onload = () => {
-          const id = 'blobid' + (new Date()).getTime();
-          const blobCache = tinymce.activeEditor.editorUpload.blobCache;
-          const base64 = reader.result.split(',')[1];
-          const blobInfo = blobCache.create(id, file, base64);
-          blobCache.add(blobInfo);
-
-          callback(blobInfo.blobUri(), {title: file.name});
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) {
+          return;
         }
-        reader.readAsDataURL(file);
+        const MAX = 10;
+        const selected = files.slice(0, MAX);
+        const ed = tinymce.activeEditor;
+
+        const readFile = (file) => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+
+        const dataUrls = await Promise.all(selected.map(readFile));
+
+        dataUrls.forEach((dataUrl, index) => {
+          const file = selected[index];
+          const alt = (file.name || '').replace(/\.[^.]+$/, '');
+          const imgHtml = `<img src="${dataUrl}" alt="${alt}" data-mce-src="${dataUrl}">`;
+          if (ed) {
+            ed.insertContent(imgHtml);
+          } else {
+            callback(dataUrl, { title: file.name });
+          }
+        });
       });
 
       input.click();
