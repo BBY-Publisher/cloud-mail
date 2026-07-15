@@ -195,6 +195,7 @@ function destroyEditor() {
 <style lang="scss" scoped>
 .editor-box {
   height: 100%;
+  min-height: 500px;
   width: 100%;
 }
 
