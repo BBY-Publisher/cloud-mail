@@ -383,17 +383,17 @@ const emailService = {
 		const isSendError = !!error;
 		const errorMessage = error?.message || '';
 
-		imageDataList = imageDataList.map(item => ({...item, contentId: `<${item.contentId}>`}))
+		const cidImageDataList = imageDataList.map(item => ({...item, contentId: `<${item.contentId}>`}))
 
 		//把图片标签cid标签切换会通用url
-		html = this.imgReplace(html, imageDataList, r2Domain);
+		const replacedHtml = this.imgReplace(html, cidImageDataList, r2Domain);
 
 		//封装数据保存到数据库
 		const emailData = {};
 		emailData.sendEmail = accountRow.email;
 		emailData.name = name;
 		emailData.subject = subject;
-		emailData.content = html;
+		emailData.content = replacedHtml;
 		emailData.text = text;
 		emailData.accountId = accountId;
 		emailData.type = emailConst.type.SEND;
@@ -433,11 +433,11 @@ const emailService = {
 		const emailResult = await orm(c).insert(email).values(emailData).returning().get();
 
 		//保存内嵌附件（失败时也保存，方便用户查看/重发）
-		if (imageDataList.length > 0) {
-			if (imageDataList.length > 50) {
+		if (cidImageDataList.length > 0) {
+			if (cidImageDataList.length > 50) {
 				throw new BizError(t('imageAttLimit'));
 			}
-			await attService.saveArticleAtt(c, imageDataList, userId, accountId, emailResult.emailId);
+			await attService.saveArticleAtt(c, cidImageDataList, userId, accountId, emailResult.emailId);
 		}
 
 		//保存普通附件

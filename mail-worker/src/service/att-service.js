@@ -10,6 +10,15 @@ import { v4 as uuidv4 } from 'uuid';
 import domainUtils from '../utils/domain-uitls';
 import settingService from "./setting-service";
 
+export const ATTACHMENT_INSERT_BATCH_SIZE = 5;
+
+export async function insertAttachmentRows(c, rows) {
+	for (let index = 0; index < rows.length; index += ATTACHMENT_INSERT_BATCH_SIZE) {
+		const batch = rows.slice(index, index + ATTACHMENT_INSERT_BATCH_SIZE);
+		await orm(c).insert(att).values(batch).run();
+	}
+}
+
 const attService = {
 
 	async addAtt(c, attachments) {
@@ -31,7 +40,7 @@ const attService = {
 
 		}
 
-		await orm(c).insert(att).values(attachments).run();
+		await insertAttachmentRows(c, attachments);
 	},
 
 	list(c, params, userId) {
@@ -162,7 +171,7 @@ const attService = {
 			attDataList.push(attData);
 		}
 
-		await orm(c).insert(att).values(attDataList).run();
+		await insertAttachmentRows(c, attDataList);
 
 		for (let att of attList) {
 			await r2Service.putObj(c, att.key, att.buff, {
@@ -191,7 +200,7 @@ const attService = {
 			delete attData.buff;
 		}
 
-		await orm(c).insert(att).values(attDataList).run();
+		await insertAttachmentRows(c, attDataList);
 
 	},
 
