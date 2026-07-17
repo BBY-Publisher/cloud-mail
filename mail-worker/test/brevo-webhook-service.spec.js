@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emailConst } from '../src/const/entity-const';
 
 const mocks = vi.hoisted(() => ({
+	getEmailEventReport: vi.fn(),
 	getTransacEmailsList: vi.fn(),
 	getTransacEmailContent: vi.fn(),
 	selectByEmailIncludeDel: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@getbrevo/brevo', () => ({
 	BrevoClient: class {
 		constructor() {
 			this.transactionalEmails = {
+				getEmailEventReport: mocks.getEmailEventReport,
 				getTransacEmailsList: mocks.getTransacEmailsList,
 				getTransacEmailContent: mocks.getTransacEmailContent
 			};
@@ -64,6 +66,7 @@ import brevoService, {
 
 describe('Brevo webhook contract', () => {
 	beforeEach(() => {
+		mocks.getEmailEventReport.mockReset();
 		mocks.getTransacEmailsList.mockReset();
 		mocks.getTransacEmailContent.mockReset();
 		mocks.selectByEmailIncludeDel.mockReset();
@@ -292,6 +295,21 @@ describe('Brevo webhook contract', () => {
 	});
 
 	it('actively updates the status of an existing Brevo email from detail events', async () => {
+		mocks.getEmailEventReport.mockResolvedValue({
+			data: {
+				events: [{
+					messageId: '<abc@relay.example>',
+					email: 'recipient@example.com',
+					event: 'delivered',
+					date: '2026-07-17T08:00:10Z'
+				}, {
+					messageId: '<abc@relay.example>',
+					email: 'recipient@example.com',
+					event: 'requests',
+					date: '2026-07-17T08:00:00Z'
+				}]
+			}
+		});
 		mocks.getTransacEmailsList.mockResolvedValue({
 			data: {
 				count: 1,
@@ -343,6 +361,17 @@ describe('Brevo webhook contract', () => {
 			skipped: 0,
 			errors: []
 		});
+		expect(mocks.getEmailEventReport).toHaveBeenCalledWith({
+			limit: 100,
+			offset: 0,
+			sort: 'desc'
+		});
+		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({
+			messageId: '<abc@relay.example>',
+			limit: 100,
+			sort: 'desc'
+		});
+		expect(mocks.getTransacEmailsList).toHaveBeenCalledTimes(1);
 	});
 
 	it('treats a missing Brevo API key as an unconfigured provider', async () => {

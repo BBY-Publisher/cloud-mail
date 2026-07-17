@@ -242,14 +242,14 @@ const brevoService = {
 		return emailService.insertFromProvider(c, 'brevo', messageId, emailRow);
 	},
 
-	async retrieveEmail(c, messageId, recipient) {
+	async retrieveEmail(c, messageId, recipient, existingClient) {
 		const apiKey = c.env.brevo_api_key;
 
 		if (!apiKey) {
 			throw new BizError('BREVO_API_KEY 未配置', 500);
 		}
 
-		const client = new BrevoClient({ apiKey });
+		const client = existingClient || new BrevoClient({ apiKey });
 
 		try {
 			const normalizedMessageId = normalizeProviderEmailId('brevo', messageId);
@@ -308,44 +308,42 @@ const brevoService = {
 		let offset = 0;
 		const limit = 100;
 		let pages = 0;
+		const seenMessageIds = new Set();
 
 		while (pages < 50) {
 			pages++;
 
 			let response;
 			try {
-				response = await client.transactionalEmails.getTransacEmailsList({ limit, offset, sort: 'desc' });
+				response = await client.transactionalEmails.getEmailEventReport({ limit, offset, sort: 'desc' });
 			} catch (e) {
-				errors.push(`brevo[list]: ${e?.body?.message || e?.message || 'list failed'}`);
+				errors.push(`brevo[events]: ${e?.body?.message || e?.message || 'list failed'}`);
 				break;
 			}
 
-			const list = response?.data?.transactionalEmails || [];
-			const total = response?.data?.count || 0;
+			const events = response?.data?.events || [];
 
-			for (const item of list) {
-				const messageId = item.messageId || item.uuid;
+			for (const event of events) {
+				const messageId = normalizeProviderEmailId('brevo', event?.messageId);
 
-				if (!messageId) continue;
+				if (!messageId || seenMessageIds.has(messageId)) continue;
+				seenMessageIds.add(messageId);
 
 				try {
 					const existing = await emailService.selectByProviderEmailId(c, 'brevo', messageId);
 
 					let detail;
 					try {
-						const content = (await client.transactionalEmails.getTransacEmailContent({ uuid: item.uuid }))?.data;
-						detail = content ? { listItem: item, content } : null;
+						detail = await this.retrieveEmail(c, messageId, event.email, client);
 					} catch (e) {
 						errors.push(`brevo[${messageId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
 						continue;
 					}
 
-					if (!detail) continue;
-
 					const statusParams = buildBrevoDetailStatusParams(
 						messageId,
 						detail.content,
-						item.date
+						detail.listItem?.date || event.date
 					);
 					if (existing) {
 						if (existing.status === statusParams.status) {
@@ -367,22 +365,22 @@ const brevoService = {
 
 					const emailRow = await this.toEmailRow(c, {
 						event: statusParams.event,
-						'message-id': item.messageId,
-						email: item.email,
-						from: item.from,
-						subject: item.subject,
-						date: item.date
+						'message-id': detail.listItem?.messageId || event.messageId,
+						email: detail.listItem?.email || event.email,
+						from: detail.listItem?.from || event.from,
+						subject: detail.listItem?.subject || event.subject,
+						date: detail.listItem?.date || event.date
 					}, detail);
 
 					await emailService.insertFromProvider(c, 'brevo', messageId, emailRow);
 					inserted++;
 				} catch (e) {
-					errors.push(`brevo[${item.messageId || item.uuid}]: ${e?.message || e}`);
+					errors.push(`brevo[${event.messageId}]: ${e?.message || e}`);
 				}
 			}
 
-			offset += list.length;
-			if (list.length < limit || offset >= total) break;
+			offset += events.length;
+			if (events.length < limit) break;
 		}
 
 		return { configured: true, inserted, updated, skipped, errors };
