@@ -1,7 +1,7 @@
 import orm from '../entity/orm';
 import email from '../entity/email';
 import { attConst, emailConst, isDel, settingConst } from '../const/entity-const';
-import { and, desc, eq, gt, inArray, lt, count, asc, sql, ne, or, like, lte, gte } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, count, asc, sql, ne, or, like, lte, gte } from 'drizzle-orm';
 import { star } from '../entity/star';
 import settingService from './setting-service';
 import accountService from './account-service';
@@ -31,6 +31,11 @@ import {
 	resolveBrevoPublicBaseUrl
 } from '../utils/brevo-email-utils';
 import { parseEmailIds } from '../utils/email-id-utils';
+import providerWebhookStateService from './provider-webhook-state-service';
+import {
+	normalizeProviderEmailId,
+	providerEmailIdCandidates
+} from '../utils/provider-webhook-utils';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -1042,8 +1047,80 @@ const emailService = {
 		return orm(c).select().from(email).where(eq(email.resendEmailId, resendEmailId)).get();
 	},
 
+	async selectByProviderEmailId(c, provider, providerEmailId) {
+		const normalizedId = normalizeProviderEmailId(provider, providerEmailId);
+		if (!normalizedId) return null;
+
+		const stateParams = { provider, providerEmailId: normalizedId };
+		const linkedEmailId = await providerWebhookStateService.findLinkedEmailId(c, stateParams);
+		if (linkedEmailId) {
+			const linkedRow = await orm(c).select().from(email)
+				.where(eq(email.emailId, linkedEmailId)).get();
+			if (linkedRow) return linkedRow;
+			await providerWebhookStateService.unlinkMissingEmail(c, {
+				...stateParams,
+				emailId: linkedEmailId
+			});
+		}
+
+		const candidates = providerEmailIdCandidates(provider, normalizedId);
+		const rows = await orm(c).select().from(email)
+			.where(and(
+				inArray(email.resendEmailId, candidates),
+				or(eq(email.provider, provider), isNull(email.provider))
+			))
+			.all();
+
+		const providerRow = rows.find(row => row.provider === provider);
+		const legacyRows = rows.filter(row => row.provider == null);
+		const selected = providerRow || (legacyRows.length === 1 ? legacyRows[0] : null);
+
+		if (!selected) return null;
+
+		await providerWebhookStateService.linkEmail(c, {
+			...stateParams,
+			emailId: selected.emailId
+		});
+
+		if (selected.provider == null) {
+			await orm(c).update(email).set({ provider })
+				.where(and(eq(email.emailId, selected.emailId), isNull(email.provider)))
+				.run();
+			selected.provider = provider;
+		}
+
+		return selected;
+	},
+
+	updateProviderEmailStatus(c, params) {
+		return providerWebhookStateService.updateStatusIfNewer(c, params);
+	},
+
 	insertFromResend(c, params) {
 		return orm(c).insert(email).values({ ...params }).returning().get();
+	},
+
+	async insertFromProvider(c, provider, providerEmailId, params) {
+		const normalizedId = normalizeProviderEmailId(provider, providerEmailId);
+		const row = await orm(c).insert(email).values({
+			...params,
+			provider,
+			resendEmailId: normalizedId
+		}).returning().get();
+
+		const linkedEmailId = await providerWebhookStateService.linkEmail(c, {
+			provider,
+			providerEmailId: normalizedId,
+			emailId: row.emailId
+		});
+
+		// A provider sync and a webhook may discover the same unknown email at
+		// the same time. The side-table primary key picks one canonical row.
+		if (linkedEmailId !== row.emailId) {
+			await orm(c).delete(email).where(eq(email.emailId, row.emailId)).run();
+			return orm(c).select().from(email).where(eq(email.emailId, linkedEmailId)).get();
+		}
+		return row;
 	},
 
 	async selectUserEmailCountList(c, userIds, type, del = isDel.NORMAL) {

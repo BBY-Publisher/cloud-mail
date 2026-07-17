@@ -19,7 +19,7 @@
 | `JWT_SECRET`            |  ✅  | 用于生成和验证 JWT 的随机长字符串                     |
 | `RESEND_WEBHOOK_SECRET` |  ❌  | Resend Webhook 的 Signing Secret；未配置时 `/webhooks` 会拒绝所有请求（返回 503），配置后才接收 Resend 事件 |
 | `BREVO_API_KEY` |  ❌  | Brevo 全局 API Key（`xkeysib-...`）；配置后才可选用 Brevo 作为发件通道 |
-| `BREVO_WEBHOOK_SECRET` |  ❌  | Brevo Webhook 的 Signing Secret（HMAC key 或 query secret）；未配置时 `/webhooks/brevo` 会拒绝所有请求（返回 503），配置后才接收 Brevo 事件 |
+| `BREVO_WEBHOOK_SECRET` |  ❌  | Brevo Webhook 静态凭据；在 Brevo Webhook 中配置 `X-Cloud-Mail-Webhook-Secret` 自定义请求头（值为该 Secret），或使用相同值的 Bearer token。未配置时 `/webhooks/brevo` 返回 503 |
 | `INIT_URL`              |  ❌  | （可选）部署后用于初始化数据库的 Worker URL（格式参考下述手动初始化）           |
 
 ---

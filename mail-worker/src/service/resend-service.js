@@ -5,7 +5,14 @@ import settingService from './setting-service';
 import accountService from './account-service';
 import emailUtils from '../utils/email-utils';
 import webhookEventService from './webhook-event-service';
+import providerWebhookStateService from './provider-webhook-state-service';
 import { Resend } from 'resend';
+import {
+	buildResendEventKey,
+	getProviderEventTime,
+	getProviderStatusRank,
+	normalizeProviderEmailId
+} from '../utils/provider-webhook-utils';
 
 const statusEventMap = {
 	'email.sent': emailConst.status.SENT,
@@ -62,11 +69,16 @@ function normalizeAddressList(value) {
 		.filter(item => item.address);
 }
 
-function buildStatusParams(body) {
+export function buildResendStatusParams(body) {
+	const providerEmailId = normalizeProviderEmailId('resend', body?.data?.email_id);
 	const params = {
-		resendEmailId: body.data.email_id,
-		status: statusEventMap[body.type]
+		provider: 'resend',
+		providerEmailId,
+		resendEmailId: providerEmailId,
+		status: statusEventMap[body.type],
+		eventTime: getProviderEventTime('resend', body)
 	};
+	params.statusRank = getProviderStatusRank(params.status);
 
 	if (body.type === 'email.bounced') {
 		params.message = JSON.stringify(body.data.bounce || {});
@@ -87,44 +99,81 @@ const resendService = {
 
 	async webhooks(c, params) {
 		const body = await this.verifyWebhook(c, params);
-		const resendEmailId = body?.data?.email_id;
+		const providerEmailId = normalizeProviderEmailId('resend', body?.data?.email_id);
 
-		if (!resendEmailId || !body.type?.startsWith('email.')) {
+		if (!providerEmailId || !body.type?.startsWith('email.')) {
 			return;
 		}
 
-		let emailRow = await emailService.selectByResendEmailId(c, resendEmailId);
+		const eventKey = await buildResendEventKey(body, params.headers?.id);
+		const deliveryClaim = await providerWebhookStateService.claimDelivery(c, {
+			provider: 'resend',
+			eventKey,
+			eventTime: getProviderEventTime('resend', body)
+		});
 
-		if (!emailRow) {
-			emailRow = await this.saveMissingEmail(c, body);
+		if (deliveryClaim.duplicate) return;
+		if (!deliveryClaim.acquired) {
+			throw new BizError('Resend webhook is already being processed', 503);
 		}
-
-		const statusParams = buildStatusParams(body);
 
 		try {
-			const recipient = Array.isArray(body.data?.to)
-				? body.data.to.join(', ')
-				: (body.data?.to || null);
+			let emailRow = await emailService.selectByProviderEmailId(c, 'resend', providerEmailId);
 
-			await webhookEventService.record(c, {
-				provider: 'resend',
-				eventType: body.type,
-				resendEmailId,
-				messageId: body.data?.message_id || null,
-				status: statusParams.status,
-				emailId: emailRow?.emailId || null,
-				recipient,
-				reason: statusParams.message || null,
-				payload: body
-			});
+			if (!emailRow) {
+				const missingClaim = await providerWebhookStateService.claimMissingEmail(c, {
+					provider: 'resend',
+					providerEmailId
+				});
+
+				if (missingClaim.emailId) {
+					emailRow = await emailService.selectByProviderEmailId(c, 'resend', providerEmailId);
+				} else if (!missingClaim.acquired) {
+					throw new BizError('Resend email backfill is already being processed', 503);
+				} else {
+					try {
+						emailRow = await this.saveMissingEmail(c, body, providerEmailId);
+					} finally {
+						await providerWebhookStateService.releaseMissingEmailClaim(c, missingClaim);
+					}
+				}
+			}
+
+			const statusParams = buildResendStatusParams(body);
+
+			try {
+				const recipient = Array.isArray(body.data?.to)
+					? body.data.to.join(', ')
+					: (body.data?.to || null);
+
+				await webhookEventService.record(c, {
+					provider: 'resend',
+					eventType: body.type,
+					resendEmailId: providerEmailId,
+					messageId: body.data?.message_id || null,
+					status: statusParams.status,
+					emailId: emailRow?.emailId || null,
+					recipient,
+					reason: statusParams.message || null,
+					payload: body
+				});
+			} catch (e) {
+				console.error('webhook event record failed (resend):', e?.message || e);
+			}
+
+			if (statusParams.status !== undefined) {
+				await emailService.updateProviderEmailStatus(c, {
+					...statusParams,
+					emailId: emailRow.emailId
+				});
+			}
+
+			await providerWebhookStateService.completeDelivery(c, deliveryClaim);
 		} catch (e) {
-			console.error('webhook event record failed (resend):', e?.message || e);
+			await providerWebhookStateService.failDelivery(c, deliveryClaim, e);
+			if (e instanceof BizError && e.code === 503) throw e;
+			throw new BizError(`Resend webhook processing failed: ${e?.message || e}`, 503);
 		}
-
-		if (statusParams.status !== undefined) {
-			await emailService.updateEmailStatus(c, statusParams);
-		}
-
 	},
 
 	async verifyWebhook(c, params) {
@@ -147,10 +196,10 @@ const resendService = {
 		}
 	},
 
-	async saveMissingEmail(c, body) {
+	async saveMissingEmail(c, body, providerEmailId) {
 		const detail = await this.retrieveEmail(c, body);
 		const emailRow = await this.toEmailRow(c, body, detail);
-		return emailService.insertFromResend(c, emailRow);
+		return emailService.insertFromProvider(c, 'resend', providerEmailId, emailRow);
 	},
 
 	async retrieveEmail(c, body) {
@@ -203,7 +252,7 @@ const resendService = {
 						if (!item?.id) continue;
 
 						try {
-							const existing = await emailService.selectByResendEmailId(c, item.id);
+							const existing = await emailService.selectByProviderEmailId(c, 'resend', item.id);
 							if (existing) {
 								skipped++;
 								continue;
@@ -223,7 +272,7 @@ const resendService = {
 								}
 							}, detailResult.data);
 
-							await emailService.insertFromResend(c, emailRow);
+							await emailService.insertFromProvider(c, 'resend', item.id, emailRow);
 							inserted++;
 						} catch (e) {
 							errors.push(`resend[${domain}][${item.id}]: ${e?.message || e}`);
@@ -292,9 +341,10 @@ const resendService = {
 			toName: recipients[0]?.name || '',
 			cc: JSON.stringify(normalizeAddressList(detail.cc || [])),
 			bcc: JSON.stringify(normalizeAddressList(detail.bcc || [])),
-			message: buildStatusParams(body).message || null,
-			createTime: detail.created_at || body.data.created_at || body.created_at
-		};
+				message: buildResendStatusParams(body).message || null,
+				provider: 'resend',
+				createTime: detail.created_at || body.data.created_at || body.created_at
+			};
 	}
 }
 

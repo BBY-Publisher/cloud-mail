@@ -4,16 +4,28 @@ import BizError from '../error/biz-error';
 import accountService from './account-service';
 import emailUtils from '../utils/email-utils';
 import webhookEventService from './webhook-event-service';
+import providerWebhookStateService from './provider-webhook-state-service';
 import { BrevoClient } from '@getbrevo/brevo';
+import {
+	buildBrevoEventKey,
+	constantTimeEquals,
+	getProviderEventTime,
+	getProviderStatusRank,
+	normalizeBrevoEventName,
+	normalizeProviderEmailId,
+	providerEmailIdCandidates,
+	toBrevoApiMessageId
+} from '../utils/provider-webhook-utils';
 
 const statusEventMap = {
 	request: emailConst.status.SENT,
 	delivered: emailConst.status.DELIVERED,
-	hardBounce: emailConst.status.BOUNCED,
-	softBounce: emailConst.status.BOUNCED,
+	hard_bounce: emailConst.status.BOUNCED,
+	soft_bounce: emailConst.status.BOUNCED,
 	spam: emailConst.status.COMPLAINED,
 	invalid_email: emailConst.status.BOUNCED,
 	blocked: emailConst.status.FAILED,
+	error: emailConst.status.FAILED,
 	deferred: emailConst.status.DELAYED,
 	unsubscribed: emailConst.status.COMPLAINED
 };
@@ -53,125 +65,147 @@ function normalizeAddressList(value) {
 		.filter(item => item.address);
 }
 
-function buildStatusParams(body) {
-	const event = body.event;
+export function getBrevoMessageId(body) {
+	return normalizeProviderEmailId('brevo', body?.['message-id'] || body?.messageId);
+}
+
+export function buildBrevoStatusParams(body) {
+	const event = normalizeBrevoEventName(body?.event);
 	const reason = body.reason || body.subject || '';
+	const providerEmailId = getBrevoMessageId(body);
 
 	const params = {
-		resendEmailId: body.messageId,
-		status: statusEventMap[event]
+		provider: 'brevo',
+		providerEmailId,
+		resendEmailId: providerEmailId,
+		status: statusEventMap[event],
+		eventTime: getProviderEventTime('brevo', body)
 	};
+	params.statusRank = getProviderStatusRank(params.status);
 
-	if (event === 'hardBounce' || event === 'softBounce' || event === 'invalid_email' || event === 'blocked' || event === 'deferred' || event === 'spam' || event === 'unsubscribed') {
+	if (event === 'hard_bounce' || event === 'soft_bounce' || event === 'invalid_email' || event === 'blocked' || event === 'error' || event === 'deferred' || event === 'spam' || event === 'unsubscribed') {
 		params.message = reason || JSON.stringify({ event, reason: body.reason });
 	}
 
 	return params;
 }
 
-async function hmacSha256Hex(secret, payload) {
-	const encoder = new TextEncoder();
-	const key = await crypto.subtle.importKey(
-		'raw',
-		encoder.encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
-	const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
-	return Array.from(new Uint8Array(sig))
-		.map(b => b.toString(16).padStart(2, '0'))
-		.join('');
-}
-
-function constantTimeEquals(a, b) {
-	if (typeof a !== 'string' || typeof b !== 'string') return false;
-	if (a.length !== b.length) return false;
-	let diff = 0;
-	for (let i = 0; i < a.length; i++) {
-		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-	}
-	return diff === 0;
-}
-
 const brevoService = {
 
 	async webhooks(c, params) {
-		const { rawPayload, body, signature } = params;
+		const { body } = params;
 
-		await this.verifyWebhook(c, { rawPayload, signature, url: c.req.url });
+		await this.verifyWebhook(c, { ...params, url: c.req.url });
 
-		const messageId = body?.messageId;
+		const providerEmailId = getBrevoMessageId(body);
 
-		if (!messageId) {
+		if (!providerEmailId) {
 			return;
 		}
 
-		let emailRow = await emailService.selectByResendEmailId(c, messageId);
-
-		if (!emailRow) {
-			emailRow = await this.saveMissingEmail(c, body, messageId);
+		const deliveryClaim = await providerWebhookStateService.claimDelivery(c, {
+			provider: 'brevo',
+			eventKey: await buildBrevoEventKey(body),
+			eventTime: getProviderEventTime('brevo', body)
+		});
+		if (deliveryClaim.duplicate) return;
+		if (!deliveryClaim.acquired) {
+			throw new BizError('Brevo webhook is already being processed', 429);
 		}
-
-		const statusParams = buildStatusParams(body);
 
 		try {
-			await webhookEventService.record(c, {
-				provider: 'brevo',
-				eventType: body.event,
-				resendEmailId: messageId,
-				messageId: body.messageId || null,
-				status: statusParams.status,
-				emailId: emailRow?.emailId || null,
-				recipient: body.email || null,
-				reason: statusParams.message || null,
-				payload: body
-			});
+			let emailRow = await emailService.selectByProviderEmailId(c, 'brevo', providerEmailId);
+
+			if (!emailRow) {
+				const missingClaim = await providerWebhookStateService.claimMissingEmail(c, {
+					provider: 'brevo',
+					providerEmailId
+				});
+
+				if (missingClaim.emailId) {
+					emailRow = await emailService.selectByProviderEmailId(c, 'brevo', providerEmailId);
+				} else if (!missingClaim.acquired) {
+					throw new BizError('Brevo email backfill is already being processed', 429);
+				} else {
+					try {
+						emailRow = await this.saveMissingEmail(c, body, providerEmailId);
+					} finally {
+						await providerWebhookStateService.releaseMissingEmailClaim(c, missingClaim);
+					}
+				}
+			}
+
+			const statusParams = buildBrevoStatusParams(body);
+
+			try {
+				await webhookEventService.record(c, {
+					provider: 'brevo',
+					eventType: body.event,
+					resendEmailId: providerEmailId,
+					messageId: body['message-id'] || body.messageId || null,
+					status: statusParams.status,
+					emailId: emailRow?.emailId || null,
+					recipient: body.email || null,
+					reason: statusParams.message || null,
+					payload: body
+				});
+			} catch (e) {
+				console.error('webhook event record failed (brevo):', e?.message || e);
+			}
+
+			if (statusParams.status !== undefined) {
+				await emailService.updateProviderEmailStatus(c, {
+					...statusParams,
+					emailId: emailRow.emailId
+				});
+			}
+
+			await providerWebhookStateService.completeDelivery(c, deliveryClaim);
 		} catch (e) {
-			console.error('webhook event record failed (brevo):', e?.message || e);
+			await providerWebhookStateService.failDelivery(c, deliveryClaim, e);
+			if (e instanceof BizError && e.code === 429) throw e;
+			throw new BizError(`Brevo webhook processing failed: ${e?.message || e}`, 429);
 		}
-
-		if (statusParams.status !== undefined) {
-			await emailService.updateEmailStatus(c, statusParams);
-		}
-
 	},
 
 	async verifyWebhook(c, params) {
-		const { rawPayload, signature, url } = params;
+		const { authorization, webhookSecret, url } = params;
 		const secret = c.env.brevo_webhook_secret;
 
 		if (!secret) {
 			throw new BizError('Brevo webhook is disabled: BREVO_WEBHOOK_SECRET is not configured', 503);
 		}
 
-		if (signature) {
-			const expected = await hmacSha256Hex(secret, rawPayload);
-			if (!constantTimeEquals(expected, signature)) {
-				throw new BizError('Invalid Brevo webhook signature', 400);
-			}
+		const bearer = String(authorization || '').match(/^Bearer\s+(.+)$/i)?.[1] || '';
+		if (
+			constantTimeEquals(secret, String(webhookSecret || ''))
+			|| constantTimeEquals(secret, bearer)
+			|| constantTimeEquals(secret, String(authorization || ''))
+		) {
 			return;
 		}
 
 		try {
 			const querySecret = new URL(url).searchParams.get('secret');
-			if (querySecret && querySecret === secret) {
+			// Deprecated compatibility path. Prefer a custom static header or
+			// Authorization because query parameters are commonly logged.
+			if (querySecret && constantTimeEquals(querySecret, secret)) {
 				return;
 			}
 		} catch (e) {
 			// ignore url parse error
 		}
 
-		throw new BizError('Brevo webhook signature missing or invalid', 400);
+		throw new BizError('Brevo webhook credentials missing or invalid', 400);
 	},
 
 	async saveMissingEmail(c, body, messageId) {
-		const detail = await this.retrieveEmail(c, messageId);
+		const detail = await this.retrieveEmail(c, messageId, body.email);
 		const emailRow = await this.toEmailRow(c, body, detail);
-		return emailService.insertFromResend(c, emailRow);
+		return emailService.insertFromProvider(c, 'brevo', messageId, emailRow);
 	},
 
-	async retrieveEmail(c, messageId) {
+	async retrieveEmail(c, messageId, recipient) {
 		const apiKey = c.env.brevo_api_key;
 
 		if (!apiKey) {
@@ -181,11 +215,32 @@ const brevoService = {
 		const client = new BrevoClient({ apiKey });
 
 		try {
-			const response = await client.transactionalEmails.getTransacEmailContent({ uuid: messageId });
+			const normalizedMessageId = normalizeProviderEmailId('brevo', messageId);
+			const listResponse = await client.transactionalEmails.getTransacEmailsList({
+				messageId: toBrevoApiMessageId(normalizedMessageId),
+				limit: 100,
+				sort: 'desc'
+			});
+			const candidates = providerEmailIdCandidates('brevo', normalizedMessageId);
+			const list = listResponse?.data?.transactionalEmails || [];
+			const normalizedRecipient = String(recipient || '').trim().toLowerCase();
+			const matchingIdRows = list.filter(item => candidates.includes(String(item?.messageId || '').trim()));
+			const listItem = matchingIdRows.find(item => (
+				!normalizedRecipient || String(item?.email || '').trim().toLowerCase() === normalizedRecipient
+			)) || matchingIdRows[0] || list[0];
+
+			if (!listItem?.uuid) {
+				throw new BizError('Brevo 邮件 UUID 为空');
+			}
+
+			const response = await client.transactionalEmails.getTransacEmailContent({ uuid: listItem.uuid });
 			if (!response?.data) {
 				throw new BizError('Brevo 邮件详情为空');
 			}
-			return response.data;
+			return {
+				listItem,
+				content: response.data
+			};
 		} catch (e) {
 			if (e?.body?.message) {
 				throw new BizError(`Brevo 反查邮件详情失败: ${e.body.message}`);
@@ -230,7 +285,7 @@ const brevoService = {
 				if (!messageId) continue;
 
 				try {
-					const existing = await emailService.selectByResendEmailId(c, messageId);
+					const existing = await emailService.selectByProviderEmailId(c, 'brevo', messageId);
 					if (existing) {
 						skipped++;
 						continue;
@@ -238,7 +293,8 @@ const brevoService = {
 
 					let detail;
 					try {
-						detail = (await client.transactionalEmails.getTransacEmailContent({ uuid: messageId }))?.data;
+							const content = (await client.transactionalEmails.getTransacEmailContent({ uuid: item.uuid }))?.data;
+							detail = content ? { listItem: item, content } : null;
 					} catch (e) {
 						errors.push(`brevo[${messageId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
 						continue;
@@ -248,14 +304,14 @@ const brevoService = {
 
 					const emailRow = await this.toEmailRow(c, {
 						event: 'request',
-						messageId,
+							'message-id': item.messageId,
 						email: item.email,
 						from: item.from,
 						subject: item.subject,
 						date: item.date
 					}, detail);
 
-					await emailService.insertFromResend(c, emailRow);
+					await emailService.insertFromProvider(c, 'brevo', messageId, emailRow);
 					inserted++;
 				} catch (e) {
 					errors.push(`brevo[${item.messageId || item.uuid}]: ${e?.message || e}`);
@@ -270,20 +326,26 @@ const brevoService = {
 	},
 
 	async toEmailRow(c, body, detail) {
-		const from = parseAddress(detail.from || body.from || '');
-		const recipients = normalizeAddressList(detail.to || [{ email: body.email, name: '' }]);
+		const listItem = detail?.listItem || {};
+		const content = detail?.content || detail || {};
+		const rawMessageId = listItem.messageId || body['message-id'] || body.messageId || '';
+		const providerEmailId = normalizeProviderEmailId('brevo', rawMessageId);
+		const from = parseAddress(listItem.from || body.from || '');
+		const recipientEmail = content.email || listItem.email || body.email || '';
+		const recipients = normalizeAddressList([{ email: recipientEmail, name: '' }]);
 		const accountEmail = recipients[0]?.address || body.email || '';
 		const accountRow = accountEmail ? await accountService.selectByEmailIncludeDel(c, accountEmail) : null;
-		const status = statusEventMap[body.event] || emailConst.status.SENT;
+		const status = statusEventMap[normalizeBrevoEventName(body.event)] || emailConst.status.SENT;
+		const html = content.body || '';
 
 		return {
-			resendEmailId: detail.id || body.messageId,
-			messageId: detail.messageId || body.messageId,
+			resendEmailId: providerEmailId,
+			messageId: rawMessageId,
 			sendEmail: from.address,
 			name: from.name,
-			subject: detail.subject || body.subject || '',
-			content: detail.htmlContent || detail.html || '',
-			text: detail.textContent || detail.text || emailUtils.htmlToText(detail.htmlContent || detail.html || ''),
+			subject: content.subject || listItem.subject || body.subject || '',
+			content: html,
+			text: emailUtils.htmlToText(html),
 			accountId: accountRow?.accountId || 0,
 			userId: accountRow?.userId || 0,
 			status,
@@ -291,11 +353,11 @@ const brevoService = {
 			recipient: JSON.stringify(recipients),
 			toEmail: recipients[0]?.address || body.email || '',
 			toName: recipients[0]?.name || '',
-			cc: JSON.stringify(normalizeAddressList(detail.cc || [])),
-			bcc: JSON.stringify(normalizeAddressList(detail.bcc || [])),
-			message: buildStatusParams(body).message || null,
+			cc: '[]',
+			bcc: '[]',
+			message: buildBrevoStatusParams(body).message || null,
 			provider: 'brevo',
-			createTime: detail.date || body.date || body.created_at
+			createTime: content.date || listItem.date || body.date || body.created_at
 		};
 	}
 };

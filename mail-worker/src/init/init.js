@@ -1,6 +1,7 @@
 import settingService from '../service/setting-service';
 import emailUtils from '../utils/email-utils';
 import {emailConst} from "../const/entity-const";
+import { ensureWebhookSyncSchema } from '../service/provider-webhook-state-service';
 
 const dbInit = {
 	async init(c) {
@@ -36,8 +37,28 @@ const dbInit = {
 
 		await this.v3_5DB(c);
 		await this.v3_6DB(c);
+		await this.v3_7DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_7DB(c) {
+		// These are additive side tables rather than new required email columns.
+		// That keeps both deployment orders safe:
+		//   1. new Worker before /init (webhook path creates them lazily)
+		//   2. /init before new Worker (the old Worker ignores them)
+		await ensureWebhookSyncSchema(c);
+
+		const rows = await c.env.db.prepare(`
+			SELECT name
+			FROM sqlite_master
+			WHERE type = 'table'
+				AND name IN ('provider_email_state', 'webhook_delivery')
+		`).all();
+		const names = new Set((rows?.results || []).map(row => row.name));
+		if (!names.has('provider_email_state') || !names.has('webhook_delivery')) {
+			throw new Error('v3_7DB: webhook sync tables were not created');
+		}
 	},
 
 	async v3_1DB(c) {

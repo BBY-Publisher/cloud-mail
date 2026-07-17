@@ -1,0 +1,26 @@
+name = "cloud-mail-vitest"
+main = "src/index.js"
+compatibility_date = "2025-03-10"
+
+[[d1_databases]]
+binding = "db"
+database_name = "cloud-mail-vitest"
+database_id = "00000000-0000-0000-0000-000000000001"
+
+[[kv_namespaces]]
+binding = "kv"
+id = "00000000000000000000000000000001"
+
+[assets]
+binding = "assets"
+directory = "./dist"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[vars]
+ai_model = ""
+analysis_cache = false
+orm_log = false
+domain = ["example.com"]
+admin = "admin@example.com"
+jwt_secret = "vitest-jwt-secret"
