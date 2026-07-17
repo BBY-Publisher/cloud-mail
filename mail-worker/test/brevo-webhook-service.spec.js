@@ -290,4 +290,68 @@ describe('Brevo webhook contract', () => {
 		);
 		expect(mocks.completeDelivery).toHaveBeenCalled();
 	});
+
+	it('actively updates the status of an existing Brevo email from detail events', async () => {
+		mocks.getTransacEmailsList.mockResolvedValue({
+			data: {
+				count: 1,
+				transactionalEmails: [{
+					messageId: '<abc@relay.example>',
+					uuid: 'brevo-uuid',
+					email: 'recipient@example.com',
+					from: 'Sender <sender@example.com>',
+					subject: 'Subject',
+					date: '2026-07-17T08:00:00Z'
+				}]
+			}
+		});
+		mocks.getTransacEmailContent.mockResolvedValue({
+			data: {
+				email: 'recipient@example.com',
+				subject: 'Subject',
+				body: '<p>Hello</p>',
+				date: '2026-07-17T08:00:00Z',
+				events: [{
+					name: 'delivered',
+					time: '2026-07-17T08:00:10Z'
+				}]
+			}
+		});
+		mocks.selectByProviderEmailId.mockResolvedValue({
+			emailId: 99,
+			status: emailConst.status.SENT
+		});
+
+		const result = await brevoService.syncFromProvider({
+			env: { brevo_api_key: 'xkeysib-test' }
+		});
+
+		expect(mocks.updateProviderEmailStatus).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				provider: 'brevo',
+				providerEmailId: 'abc@relay.example',
+				emailId: 99,
+				status: emailConst.status.DELIVERED,
+				eventTime: Date.parse('2026-07-17T08:00:10Z')
+			})
+		);
+		expect(result).toMatchObject({
+			configured: true,
+			inserted: 0,
+			updated: 1,
+			skipped: 0,
+			errors: []
+		});
+	});
+
+	it('treats a missing Brevo API key as an unconfigured provider', async () => {
+		await expect(brevoService.syncFromProvider({ env: {} })).resolves.toEqual({
+			configured: false,
+			inserted: 0,
+			updated: 0,
+			skipped: 0,
+			errors: []
+		});
+	});
 });

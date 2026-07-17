@@ -3,6 +3,8 @@ import emailService from '../service/email-service';
 import result from '../model/result';
 import BizError from '../error/biz-error';
 import { t } from '../i18n/i18n';
+import providerSyncService from '../service/provider-sync-service';
+import superAdminService from '../service/super-admin-service';
 
 app.get('/allEmail/list', async (c) => {
 	const data = await emailService.allList(c, c.req.query());
@@ -35,3 +37,8 @@ app.get('/allEmail/latest', async (c) => {
 	const list = await emailService.allEmailLatest(c, c.req.query());
 	return c.json(result.ok(list));
 })
+
+app.post('/allEmail/sync', async (c) => {
+	await superAdminService.require(c);
+	return c.json(result.ok(await providerSyncService.sync(c)));
+});

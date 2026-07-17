@@ -48,6 +48,7 @@ const requirePerms = [
 	'/allEmail/delete',
 	'/allEmail/batchDelete',
 	'/allEmail/latest',
+	'/allEmail/sync',
 	'/setting/setBackground',
 	'/setting/deleteBackground',
 	'/setting/set',

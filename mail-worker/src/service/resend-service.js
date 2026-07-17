@@ -226,69 +226,114 @@ const resendService = {
 		const tokens = Object.entries(resendTokens).filter(([, token]) => token);
 
 		let inserted = 0;
+		let updated = 0;
 		let skipped = 0;
 		const errors = [];
+
+		if (tokens.length === 0) {
+			return { configured: false, inserted, updated, skipped, errors };
+		}
 
 		for (const [domain, token] of tokens) {
 			try {
 				const resend = new Resend(token);
-				let after;
-				let hasMore = true;
-				let pages = 0;
+				const syncCollection = async ({ received, listPage, getDetail }) => {
+					let after;
+					let hasMore = true;
+					let pages = 0;
 
-				while (hasMore && pages < 50) {
-					pages++;
-					const listResult = await resend.emails.list({ limit: 100, after });
+					while (hasMore && pages < 50) {
+						pages++;
+						const listResult = await listPage({ limit: 100, after });
 
-					if (listResult.error) {
-						errors.push(`resend[${domain}]: ${listResult.error.message || 'list failed'}`);
-						break;
-					}
+						if (listResult.error) {
+							errors.push(`resend[${domain}][${received ? 'received' : 'sent'}]: ${listResult.error.message || 'list failed'}`);
+							break;
+						}
 
-					const items = listResult.data?.data || [];
-					hasMore = !!listResult.data?.has_more;
+						const items = listResult.data?.data || [];
+						hasMore = !!listResult.data?.has_more;
 
-					for (const item of items) {
-						if (!item?.id) continue;
+						for (const item of items) {
+							if (!item?.id) continue;
 
-						try {
-							const existing = await emailService.selectByProviderEmailId(c, 'resend', item.id);
-							if (existing) {
-								skipped++;
-								continue;
-							}
+							try {
+								const existing = await emailService.selectByProviderEmailId(c, 'resend', item.id);
+								if (existing) {
+									if (received) {
+										skipped++;
+										continue;
+									}
 
-							const detailResult = await resend.emails.get(item.id);
-							if (detailResult.error || !detailResult.data) continue;
+									const status = resendLastEventMap[item.last_event];
+									if (status === undefined || existing.status === status) {
+										skipped++;
+										continue;
+									}
 
-							const emailRow = await this.toEmailRow(c, {
-								type: 'email.sent',
-								data: {
-									email_id: item.id,
-									from: item.from,
-									to: item.to,
-									subject: item.subject,
-									created_at: item.created_at
+									const changed = await emailService.updateProviderEmailStatus(c, {
+										provider: 'resend',
+										providerEmailId: item.id,
+										resendEmailId: item.id,
+										emailId: existing.emailId,
+										status,
+										statusRank: getProviderStatusRank(status),
+										eventTime: Date.now()
+									});
+									if (changed) {
+										updated++;
+									} else {
+										skipped++;
+									}
+									continue;
 								}
-							}, detailResult.data);
 
-							await emailService.insertFromProvider(c, 'resend', item.id, emailRow);
-							inserted++;
-						} catch (e) {
-							errors.push(`resend[${domain}][${item.id}]: ${e?.message || e}`);
+								const detailResult = await getDetail(item.id);
+								if (detailResult.error || !detailResult.data) {
+									errors.push(`resend[${domain}][${item.id}]: ${detailResult.error?.message || 'detail failed'}`);
+									continue;
+								}
+
+								const emailRow = await this.toEmailRow(c, {
+									type: received ? 'email.received' : 'email.sent',
+									data: {
+										email_id: item.id,
+										from: item.from,
+										to: item.to,
+										subject: item.subject,
+										created_at: item.created_at
+									}
+								}, detailResult.data);
+
+								await emailService.insertFromProvider(c, 'resend', item.id, emailRow);
+								inserted++;
+							} catch (e) {
+								errors.push(`resend[${domain}][${item.id}]: ${e?.message || e}`);
+							}
+						}
+
+						if (items.length > 0) {
+							after = items[items.length - 1].id;
 						}
 					}
+				};
 
-					if (items.length > 0) {
-						after = items[items.length - 1].id;
-					}
-				}
+				await syncCollection({
+					received: false,
+					listPage: options => resend.emails.list(options),
+					getDetail: id => resend.emails.get(id)
+				});
+				await syncCollection({
+					received: true,
+					listPage: options => resend.emails.receiving.list(options),
+					getDetail: id => resend.emails.receiving.get(id)
+				});
 			} catch (e) {
 				errors.push(`resend[${domain}]: ${e?.message || e}`);
 			}
 		}
 
-		return { inserted, skipped, errors };
+		return { configured: true, inserted, updated, skipped, errors };
 	},
 
 	async getResendToken(c, body) {

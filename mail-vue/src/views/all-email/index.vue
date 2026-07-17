@@ -56,6 +56,10 @@
               v-if="params.timeSort === 0" width="28" height="28"/>
         <Icon class="icon" @click="changeTimeSort" icon="material-symbols-light:timer-arrow-up-outline" v-else
               width="28" height="28"/>
+        <el-tooltip :content="$t('sync')" placement="bottom" v-if="isSuperAdmin">
+          <Icon class="icon" :class="{'icon-loading': syncing}" @click="onSync"
+                icon="material-symbols-light:sync" width="28" height="28"/>
+        </el-tooltip>
         <Icon class="icon clear" icon="fluent:broom-sparkle-16-regular" width="22" height="22" @click="openBathDelete"/>
       </template>
     </emailScroll>
@@ -96,7 +100,8 @@ import {
   allEmailList,
   allEmailDelete,
   allEmailBatchDelete,
-  allEmailLatest
+  allEmailLatest,
+  allEmailSync
 } from "@/request/all-email.js";
 import {Icon} from "@iconify/vue";
 import router from "@/router/index.js";
@@ -105,6 +110,9 @@ import {toUtc} from "@/utils/day.js";
 import {sleep} from "@/utils/time-utils.js";
 import {useSettingStore} from "@/store/setting.js";
 import { useRoute } from 'vue-router'
+import {useUserStore} from "@/store/user.js";
+import {canComposeFromAllEmail} from "@/utils/all-email-actions.js";
+import {ElMessage, ElMessageBox} from "element-plus";
 
 defineOptions({
   name: 'all-email'
@@ -114,12 +122,15 @@ const route = useRoute()
 const {t} = useI18n();
 const emailStore = useEmailStore();
 const settingStore = useSettingStore();
+const userStore = useUserStore();
 const clearTime = ref('')
 const sysEmailScroll = ref({})
 const searchValue = ref('')
 const mySelect = ref()
 const showBathDelete = ref(false)
 const clearLoading = ref(false)
+const syncing = ref(false)
+const isSuperAdmin = computed(() => userStore.user?.permKeys?.includes('*') === true)
 
 onMounted(() => {
   latest();
@@ -283,8 +294,56 @@ function jumpContent(email) {
   emailStore.contentData.email = email
   emailStore.contentData.delType = 'physics'
   emailStore.contentData.showStar = false
-  emailStore.contentData.showReply = false
+  emailStore.contentData.showReply = canComposeFromAllEmail(email)
   router.push({name: 'content'})
+}
+
+async function onSync() {
+  if (syncing.value) return;
+
+  try {
+    await ElMessageBox.confirm(t('syncConfirm'), t('sync'), {
+      confirmButtonText: t('confirm'),
+      cancelButtonText: t('cancel'),
+      type: 'warning'
+    });
+  } catch (_) {
+    return;
+  }
+
+  syncing.value = true;
+  try {
+    const data = await allEmailSync();
+    const inserted = data?.inserted || 0;
+    const updated = data?.updated || 0;
+    const skipped = data?.skipped || 0;
+    const errors = data?.errors || [];
+
+    if (!data?.configured) {
+      ElMessage({
+        type: 'warning',
+        message: t('syncNoProvider')
+      });
+      return;
+    }
+
+    if (errors.length > 0) {
+      console.warn('provider sync errors:', errors);
+    }
+
+    ElMessage({
+      type: inserted + updated > 0 ? 'success' : 'info',
+      message: t('syncSuccess', { inserted, updated, skipped })
+    });
+    sysEmailScroll.value.refreshList();
+  } catch (_) {
+    ElMessage({
+      type: 'error',
+      message: t('syncFailed')
+    });
+  } finally {
+    syncing.value = false;
+  }
 }
 
 
@@ -476,6 +535,18 @@ async function latest() {
 
 .icon {
   cursor: pointer;
+}
+
+.icon-loading {
+  animation: spin 1s linear infinite;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .clear {

@@ -19,6 +19,7 @@ import {
 
 const statusEventMap = {
 	request: emailConst.status.SENT,
+	sent: emailConst.status.SENT,
 	delivered: emailConst.status.DELIVERED,
 	hard_bounce: emailConst.status.BOUNCED,
 	soft_bounce: emailConst.status.BOUNCED,
@@ -87,6 +88,42 @@ export function buildBrevoStatusParams(body) {
 		params.message = reason || JSON.stringify({ event, reason: body.reason });
 	}
 
+	return params;
+}
+
+export function buildBrevoDetailStatusParams(messageId, content, fallbackDate) {
+	const events = Array.isArray(content?.events) ? content.events : [];
+	const supportedEvents = events
+		.map(event => {
+			const name = normalizeBrevoEventName(event?.name);
+			const status = statusEventMap[name];
+			const eventTime = Date.parse(event?.time || '');
+			return {
+				name,
+				status,
+				eventTime: Number.isFinite(eventTime) ? eventTime : 0,
+				statusRank: getProviderStatusRank(status)
+			};
+		})
+		.filter(event => event.status !== undefined);
+
+	supportedEvents.sort((left, right) => (
+		left.eventTime - right.eventTime || left.statusRank - right.statusRank
+	));
+
+	const latest = supportedEvents.at(-1) || {
+		name: 'sent',
+		status: emailConst.status.SENT,
+		eventTime: Date.parse(content?.date || fallbackDate || '') || 0,
+		statusRank: getProviderStatusRank(emailConst.status.SENT)
+	};
+	const params = buildBrevoStatusParams({
+		event: latest.name,
+		'message-id': messageId,
+		ts_event: latest.eventTime
+	});
+	params.event = latest.name;
+	params.eventTime = latest.eventTime;
 	return params;
 }
 
@@ -253,12 +290,19 @@ const brevoService = {
 		const apiKey = c.env.brevo_api_key;
 
 		if (!apiKey) {
-			throw new BizError('BREVO_API_KEY 未配置', 500);
+			return {
+				configured: false,
+				inserted: 0,
+				updated: 0,
+				skipped: 0,
+				errors: []
+			};
 		}
 
 		const client = new BrevoClient({ apiKey });
 
 		let inserted = 0;
+		let updated = 0;
 		let skipped = 0;
 		const errors = [];
 		let offset = 0;
@@ -286,15 +330,11 @@ const brevoService = {
 
 				try {
 					const existing = await emailService.selectByProviderEmailId(c, 'brevo', messageId);
-					if (existing) {
-						skipped++;
-						continue;
-					}
 
 					let detail;
 					try {
-							const content = (await client.transactionalEmails.getTransacEmailContent({ uuid: item.uuid }))?.data;
-							detail = content ? { listItem: item, content } : null;
+						const content = (await client.transactionalEmails.getTransacEmailContent({ uuid: item.uuid }))?.data;
+						detail = content ? { listItem: item, content } : null;
 					} catch (e) {
 						errors.push(`brevo[${messageId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
 						continue;
@@ -302,9 +342,32 @@ const brevoService = {
 
 					if (!detail) continue;
 
+					const statusParams = buildBrevoDetailStatusParams(
+						messageId,
+						detail.content,
+						item.date
+					);
+					if (existing) {
+						if (existing.status === statusParams.status) {
+							skipped++;
+							continue;
+						}
+
+						const changed = await emailService.updateProviderEmailStatus(c, {
+							...statusParams,
+							emailId: existing.emailId
+						});
+						if (changed) {
+							updated++;
+						} else {
+							skipped++;
+						}
+						continue;
+					}
+
 					const emailRow = await this.toEmailRow(c, {
-						event: 'request',
-							'message-id': item.messageId,
+						event: statusParams.event,
+						'message-id': item.messageId,
 						email: item.email,
 						from: item.from,
 						subject: item.subject,
@@ -322,7 +385,7 @@ const brevoService = {
 			if (list.length < limit || offset >= total) break;
 		}
 
-		return { inserted, skipped, errors };
+		return { configured: true, inserted, updated, skipped, errors };
 	},
 
 	async toEmailRow(c, body, detail) {

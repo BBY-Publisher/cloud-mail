@@ -171,7 +171,7 @@
               </div>
             </template>
           </el-dropdown-item>
-          <el-dropdown-item v-if="['email','star'].includes(props.type)" @click="openReply(rightClickEmail)">
+          <el-dropdown-item v-perm="'email:send'" v-if="canReplyOrForward(rightClickEmail, false)" @click="openReply(rightClickEmail)">
             <template #default>
               <div class="right-dropdown-item">
                 <Icon icon="la:reply" width="20" height="20"  />
@@ -179,7 +179,7 @@
               </div>
             </template>
           </el-dropdown-item>
-          <el-dropdown-item v-if="['email','send', 'star'].includes(props.type)" @click="openForward(rightClickEmail)">
+          <el-dropdown-item v-perm="'email:send'" v-if="canReplyOrForward(rightClickEmail, true)" @click="openForward(rightClickEmail)">
             <template #default>
               <div class="right-dropdown-item">
                 <Icon icon="iconoir:arrow-up-right" width="19" height="19"  />
@@ -246,6 +246,7 @@ import {useI18n} from "vue-i18n";
 import {EmailUnreadEnum} from "@/enums/email-enum.js";
 import { UseVirtualList } from '@vueuse/components'
 import { useScroll } from '@vueuse/core'
+import {canComposeFromAllEmail} from "@/utils/all-email-actions.js";
 
 const props = defineProps({
   getEmailList: Function,
@@ -492,6 +493,15 @@ function openReply(email) {
 
 function openForward(email) {
   uiStore.writerRef.openForward(email)
+}
+
+function canReplyOrForward(email, allowSent) {
+  if (props.type === 'all-email') {
+    return canComposeFromAllEmail(email);
+  }
+  return allowSent
+      ? ['email', 'send', 'star'].includes(props.type)
+      : ['email', 'star'].includes(props.type);
 }
 
 function visibleChange(e) {
