@@ -17,6 +17,8 @@ import {
 const statusEventMap = {
 	'email.sent': emailConst.status.SENT,
 	'email.delivered': emailConst.status.DELIVERED,
+	'email.opened': emailConst.status.DELIVERED,
+	'email.clicked': emailConst.status.DELIVERED,
 	'email.complained': emailConst.status.COMPLAINED,
 	'email.bounced': emailConst.status.BOUNCED,
 	'email.delivery_delayed': emailConst.status.DELAYED,
@@ -26,12 +28,17 @@ const statusEventMap = {
 
 const resendLastEventMap = {
 	sent: emailConst.status.SENT,
+	queued: emailConst.status.SAVING,
+	scheduled: emailConst.status.SAVING,
 	delivered: emailConst.status.DELIVERED,
+	opened: emailConst.status.DELIVERED,
+	clicked: emailConst.status.DELIVERED,
 	complained: emailConst.status.COMPLAINED,
 	bounced: emailConst.status.BOUNCED,
 	delivery_delayed: emailConst.status.DELAYED,
 	failed: emailConst.status.FAILED,
-	suppressed: emailConst.status.FAILED
+	suppressed: emailConst.status.FAILED,
+	canceled: emailConst.status.FAILED
 };
 
 function parseAddress(value) {
@@ -312,9 +319,19 @@ const resendService = {
 							}
 						}
 
-						if (items.length > 0) {
-							after = items[items.length - 1].id;
+						if (hasMore) {
+							const nextAfter = items.at(-1)?.id;
+							if (!nextAfter || nextAfter === after) {
+								errors.push(`resend[${domain}][${received ? 'received' : 'sent'}]: pagination cursor did not advance`);
+								hasMore = false;
+								break;
+							}
+							after = nextAfter;
 						}
+					}
+
+					if (hasMore) {
+						errors.push(`resend[${domain}][${received ? 'received' : 'sent'}]: pagination page limit reached`);
 					}
 				};
 
@@ -367,7 +384,7 @@ const resendService = {
 		const accountRow = accountEmail ? await accountService.selectByEmailIncludeDel(c, accountEmail) : null;
 		const status = body.type === 'email.received'
 			? accountRow ? emailConst.status.RECEIVE : emailConst.status.NOONE
-			: statusEventMap[body.type] || resendLastEventMap[detail.last_event] || emailConst.status.SENT;
+			: resendLastEventMap[detail.last_event] ?? statusEventMap[body.type] ?? emailConst.status.SENT;
 
 		return {
 			resendEmailId: detail.id || body.data.email_id,

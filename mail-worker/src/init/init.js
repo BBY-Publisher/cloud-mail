@@ -38,8 +38,35 @@ const dbInit = {
 		await this.v3_5DB(c);
 		await this.v3_6DB(c);
 		await this.v3_7DB(c);
+		await this.v3_8DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_8DB(c) {
+		const column = await c.env.db.prepare(`
+			SELECT name
+			FROM pragma_table_info('setting')
+			WHERE name = 'brevo_webhook_secret'
+			LIMIT 1
+		`).first();
+
+		if (column) {
+			return;
+		}
+
+		await c.env.db.prepare(`
+			ALTER TABLE setting
+			ADD COLUMN brevo_webhook_secret TEXT NOT NULL DEFAULT ''
+		`).run();
+
+		const envSecret = String(c.env.brevo_webhook_secret || '').trim();
+		if (envSecret) {
+			await c.env.db.prepare(`
+				UPDATE setting
+				SET brevo_webhook_secret = ?
+			`).bind(envSecret).run();
+		}
 	},
 
 	async v3_7DB(c) {

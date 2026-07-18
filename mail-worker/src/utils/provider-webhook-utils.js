@@ -7,7 +7,11 @@ const BREVO_EVENT_ALIASES = {
 	soft_bounce: 'soft_bounce',
 	invalid: 'invalid_email',
 	invalidEmail: 'invalid_email',
-	invalid_email: 'invalid_email'
+	invalid_email: 'invalid_email',
+	uniqueOpened: 'unique_opened',
+	uniqueopened: 'unique_opened',
+	proxyOpen: 'proxy_open',
+	uniqueProxyOpen: 'unique_proxy_open'
 };
 
 export function normalizeProviderEmailId(provider, value) {

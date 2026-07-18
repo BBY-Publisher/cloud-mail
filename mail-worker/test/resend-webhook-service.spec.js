@@ -111,6 +111,16 @@ describe('Resend webhook contract', () => {
 		});
 	});
 
+	it.each([
+		['email.opened', 2],
+		['email.clicked', 2]
+	])('keeps Resend tracking event %s at delivered status', (type, status) => {
+		expect(buildResendStatusParams({
+			type,
+			data: { email_id: 'resend-id' }
+		}).status).toBe(status);
+	});
+
 	it('marks backfilled rows as Resend provider rows', async () => {
 		const row = await resendService.toEmailRow(
 			{ env: {} },
@@ -297,6 +307,72 @@ describe('Resend webhook contract', () => {
 			updated: 0,
 			errors: []
 		});
+	});
+
+	it('imports an unknown sent Resend email using the detail last_event status', async () => {
+		mocks.listEmails.mockResolvedValue({
+			data: {
+				data: [{
+					id: 'sent-id',
+					from: 'Sender <sender@sender.example>',
+					to: ['recipient@example.com'],
+					subject: 'Delivered message',
+					last_event: 'delivered',
+					created_at: '2026-07-17T08:00:00Z'
+				}],
+				has_more: false
+			}
+		});
+		mocks.selectByProviderEmailId.mockResolvedValue(null);
+		mocks.getEmail.mockResolvedValue({
+			data: {
+				id: 'sent-id',
+				from: 'Sender <sender@sender.example>',
+				to: ['recipient@example.com'],
+				cc: [],
+				bcc: [],
+				subject: 'Delivered message',
+				html: '<p>Hello</p>',
+				text: 'Hello',
+				last_event: 'delivered',
+				created_at: '2026-07-17T08:00:00Z'
+			}
+		});
+		mocks.insertFromProvider.mockResolvedValue({ emailId: 90 });
+
+		const result = await resendService.syncFromProvider({ env: {} });
+
+		expect(mocks.insertFromProvider).toHaveBeenCalledWith(
+			expect.anything(),
+			'resend',
+			'sent-id',
+			expect.objectContaining({
+				type: 1,
+				status: 2
+			})
+		);
+		expect(result).toMatchObject({
+			configured: true,
+			inserted: 1,
+			updated: 0,
+			errors: []
+		});
+	});
+
+	it('stops Resend pagination when has_more is true but the cursor cannot advance', async () => {
+		mocks.listEmails.mockResolvedValue({
+			data: {
+				data: [],
+				has_more: true
+			}
+		});
+
+		const result = await resendService.syncFromProvider({ env: {} });
+
+		expect(mocks.listEmails).toHaveBeenCalledTimes(1);
+		expect(result.errors).toContain(
+			'resend[sender.example][sent]: pagination cursor did not advance'
+		);
 	});
 
 	it('treats missing Resend tokens as an unconfigured provider', async () => {

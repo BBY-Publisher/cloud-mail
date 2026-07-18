@@ -121,6 +121,8 @@ const settingService = {
 		settingRow.s3AccessKey = settingRow.s3AccessKey ? `${settingRow.s3AccessKey.slice(0, 12)}******` : null;
 		settingRow.s3SecretKey = settingRow.s3SecretKey ? `${settingRow.s3SecretKey.slice(0, 12)}******` : null;
 		settingRow.tgBotToken = settingRow.tgBotToken ? `${settingRow.tgBotToken.slice(0, 20)}******` : null;
+		settingRow.hasBrevoWebhookSecret = !!settingRow.brevoWebhookSecret;
+		delete settingRow.brevoWebhookSecret;
 		settingRow.hasR2 = !!c.env.r2
 		settingRow.hasCfEmail = !!c.env.email
 		settingRow.hasBrevo = !!c.env.brevo_api_key
@@ -185,6 +187,10 @@ const settingService = {
 
 		if (Array.isArray(params.aiCodeFilter)) {
 			params.aiCodeFilter = params.aiCodeFilter + '';
+		}
+
+		if (Object.hasOwn(params, 'brevoWebhookSecret')) {
+			params.brevoWebhookSecret = String(params.brevoWebhookSecret || '').trim();
 		}
 
 		params.resendTokens = JSON.stringify(resendTokens);

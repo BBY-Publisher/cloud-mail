@@ -9,6 +9,7 @@ export interface WebsiteConfig {
   turnstileKey?: string;
   r2Domain?: string;
   loginOpacity?: number;
+  hasBrevoWebhookSecret?: boolean;
   [key: string]: unknown;
 }
 

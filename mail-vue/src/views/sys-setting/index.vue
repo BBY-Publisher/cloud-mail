@@ -226,6 +226,15 @@
                 </div>
               </div>
               <div class="setting-item">
+                <div><span>{{ $t('brevoWebhookSecret') }}</span></div>
+                <div class="r2domain">
+                  <span>{{ setting.hasBrevoWebhookSecret ? $t('enabled') : $t('disabled') }}</span>
+                  <el-button class="opt-button" size="small" type="primary" @click="openBrevoWebhookSecret">
+                    <Icon icon="fluent:settings-48-regular" width="16" height="16"/>
+                  </el-button>
+                </div>
+              </div>
+              <div class="setting-item">
                 <div><span>{{ $t('blackList') }}</span></div>
                 <div>
                   <el-button class="opt-button" style="margin-top: 0" @click="openBlackListForm" size="small"
@@ -539,6 +548,20 @@
           </el-select>
           <el-input type="text" :placeholder="$t('addResendTokenDesc')" v-model="resendTokenForm.token"/>
           <el-button type="primary" :loading="settingLoading" @click="saveResendToken">{{ $t('save') }}</el-button>
+        </form>
+      </el-dialog>
+      <el-dialog v-model="brevoWebhookSecretShow" :title="$t('brevoWebhookSecret')" width="380"
+                 @closed="brevoWebhookSecretInput = ''">
+        <form>
+          <el-input type="password" show-password autocomplete="new-password"
+                    :placeholder="$t('brevoWebhookSecretPlaceholder')"
+                    v-model="brevoWebhookSecretInput"/>
+          <div style="margin-top: 10px; color: var(--el-text-color-secondary); font-size: 13px;">
+            {{ $t('brevoWebhookSecretDesc') }}
+          </div>
+          <el-button type="primary" :loading="settingLoading" @click="saveBrevoWebhookSecret">
+            {{ $t('save') }}
+          </el-button>
         </form>
       </el-dialog>
       <el-dialog v-model="r2DomainShow" :title="$t('addOsDomain')" width="340"
@@ -951,6 +974,8 @@ const accountStore = useAccountStore();
 const userStore = useUserStore();
 const editTitleShow = ref(false)
 const resendTokenFormShow = ref(false)
+const brevoWebhookSecretShow = ref(false)
+const brevoWebhookSecretInput = ref('')
 const blackFormShow = ref(false)
 const aiCodeFilterShow = ref(false)
 const r2DomainShow = ref(false)
@@ -1611,12 +1636,22 @@ function saveResendToken() {
   editSetting(settingForm)
 }
 
+function openBrevoWebhookSecret() {
+  brevoWebhookSecretInput.value = ''
+  brevoWebhookSecretShow.value = true
+}
+
+function saveBrevoWebhookSecret() {
+  editSetting({brevoWebhookSecret: brevoWebhookSecretInput.value.trim()})
+}
+
 function backupSetting() {
   const settingForm = {...setting.value}
   delete settingForm.resendTokens
   delete settingForm.domainProviders
   delete settingForm.siteKey
   delete settingForm.secretKey
+  delete settingForm.brevoWebhookSecret
   backup = JSON.stringify(setting.value)
 }
 
@@ -1638,6 +1673,7 @@ function change(e) {
   delete settingForm.s3AccessKey
   delete settingForm.s3SecretKey
   delete settingForm.tgBotToken
+  delete settingForm.brevoWebhookSecret
   delete settingForm.resendTokens
   delete settingForm.domainProviders
   editSetting(settingForm, false)
@@ -1709,6 +1745,7 @@ function editSetting(settingForm, refreshStatus = true) {
     emailPrefixShow.value = false
     aiCodeFilterShow.value = false
     providerOverrideFormShow.value = false
+    brevoWebhookSecretShow.value = false
   }).catch((e) => {
     loginOpacity.value = setting.value.loginOpacity
     setting.value = {...setting.value, ...JSON.parse(backup)}

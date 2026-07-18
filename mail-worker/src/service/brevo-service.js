@@ -5,6 +5,7 @@ import accountService from './account-service';
 import emailUtils from '../utils/email-utils';
 import webhookEventService from './webhook-event-service';
 import providerWebhookStateService from './provider-webhook-state-service';
+import settingService from './setting-service';
 import { BrevoClient } from '@getbrevo/brevo';
 import {
 	buildBrevoEventKey,
@@ -28,6 +29,13 @@ const statusEventMap = {
 	blocked: emailConst.status.FAILED,
 	error: emailConst.status.FAILED,
 	deferred: emailConst.status.DELAYED,
+	click: emailConst.status.DELIVERED,
+	clicked: emailConst.status.DELIVERED,
+	clicks: emailConst.status.DELIVERED,
+	opened: emailConst.status.DELIVERED,
+	unique_opened: emailConst.status.DELIVERED,
+	proxy_open: emailConst.status.DELIVERED,
+	unique_proxy_open: emailConst.status.DELIVERED,
 	unsubscribed: emailConst.status.COMPLAINED
 };
 
@@ -207,10 +215,10 @@ const brevoService = {
 
 	async verifyWebhook(c, params) {
 		const { authorization, webhookSecret, url } = params;
-		const secret = c.env.brevo_webhook_secret;
+		const { brevoWebhookSecret: secret } = await settingService.query(c);
 
 		if (!secret) {
-			throw new BizError('Brevo webhook is disabled: BREVO_WEBHOOK_SECRET is not configured', 503);
+			throw new BizError('Brevo webhook is disabled: webhook secret is not configured', 503);
 		}
 
 		const bearer = String(authorization || '').match(/^Bearer\s+(.+)$/i)?.[1] || '';
@@ -315,16 +323,17 @@ const brevoService = {
 
 			let response;
 			try {
-				response = await client.transactionalEmails.getEmailEventReport({ limit, offset, sort: 'desc' });
+				response = await client.transactionalEmails.getTransacEmailsList({ limit, offset, sort: 'desc' });
 			} catch (e) {
-				errors.push(`brevo[events]: ${e?.body?.message || e?.message || 'list failed'}`);
+				errors.push(`brevo[emails]: ${e?.body?.message || e?.message || 'list failed'}`);
 				break;
 			}
 
-			const events = response?.data?.events || [];
+			const list = response?.data?.transactionalEmails || [];
+			const total = Number(response?.data?.count);
 
-			for (const event of events) {
-				const messageId = normalizeProviderEmailId('brevo', event?.messageId);
+			for (const listItem of list) {
+				const messageId = normalizeProviderEmailId('brevo', listItem?.messageId);
 
 				if (!messageId || seenMessageIds.has(messageId)) continue;
 				seenMessageIds.add(messageId);
@@ -334,7 +343,19 @@ const brevoService = {
 
 					let detail;
 					try {
-						detail = await this.retrieveEmail(c, messageId, event.email, client);
+						if (!listItem?.uuid) {
+							throw new BizError('Brevo 邮件 UUID 为空');
+						}
+						const detailResponse = await client.transactionalEmails.getTransacEmailContent({
+							uuid: listItem.uuid
+						});
+						if (!detailResponse?.data) {
+							throw new BizError('Brevo 邮件详情为空');
+						}
+						detail = {
+							listItem,
+							content: detailResponse.data
+						};
 					} catch (e) {
 						errors.push(`brevo[${messageId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
 						continue;
@@ -343,7 +364,7 @@ const brevoService = {
 					const statusParams = buildBrevoDetailStatusParams(
 						messageId,
 						detail.content,
-						detail.listItem?.date || event.date
+						listItem.date
 					);
 					if (existing) {
 						if (existing.status === statusParams.status) {
@@ -365,22 +386,28 @@ const brevoService = {
 
 					const emailRow = await this.toEmailRow(c, {
 						event: statusParams.event,
-						'message-id': detail.listItem?.messageId || event.messageId,
-						email: detail.listItem?.email || event.email,
-						from: detail.listItem?.from || event.from,
-						subject: detail.listItem?.subject || event.subject,
-						date: detail.listItem?.date || event.date
+						'message-id': listItem.messageId,
+						email: listItem.email,
+						from: listItem.from,
+						subject: listItem.subject,
+						date: listItem.date
 					}, detail);
 
 					await emailService.insertFromProvider(c, 'brevo', messageId, emailRow);
 					inserted++;
 				} catch (e) {
-					errors.push(`brevo[${event.messageId}]: ${e?.message || e}`);
+					errors.push(`brevo[${listItem.messageId}]: ${e?.message || e}`);
 				}
 			}
 
-			offset += events.length;
-			if (events.length < limit) break;
+			if (list.length === 0) break;
+
+			offset += list.length;
+			if (Number.isFinite(total)) {
+				if (offset >= total) break;
+			} else if (list.length < limit) {
+				break;
+			}
 		}
 
 		return { configured: true, inserted, updated, skipped, errors };

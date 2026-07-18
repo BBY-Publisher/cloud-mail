@@ -44,7 +44,7 @@ crons = ["0 16 * * *"]	#每天晚上12点执行每日任务,刷新分析缓存
 #jwt_secret = ""			#jwt令牌的密钥,随便填一串字符串
 #resend_webhook_secret = ""	#Resend Webhook Signing Secret
 #brevo_api_key = ""			#Brevo 全局 API Key,格式 xkeysib-...
-#brevo_webhook_secret = ""	#Brevo Webhook 静态凭据（推荐配置为 X-Cloud-Mail-Webhook-Secret 或 Bearer token）
+#brevo_webhook_secret = ""	#Brevo Webhook 初始密钥；首次 /init 后可在系统设置中修改
 
 [build]
 command = "pnpm --prefix ../mail-vue install && pnpm --prefix ../mail-vue run build"

@@ -102,6 +102,10 @@ export default function SysSettingView() {
   const [providerOverrideFormShow, setProviderOverrideFormShow] = useState(false);
   const [providerOverrideForm, setProviderOverrideForm] = useState({ domain: '', provider: '' });
 
+  // Brevo webhook
+  const [brevoWebhookSecretShow, setBrevoWebhookSecretShow] = useState(false);
+  const [brevoWebhookSecretInput, setBrevoWebhookSecretInput] = useState('');
+
   // Reg verify count
   const [regVerifyCountShow, setRegVerifyCountShow] = useState(false);
   const [addVerifyCountShow, setAddVerifyCountShow] = useState(false);
@@ -296,6 +300,15 @@ export default function SysSettingView() {
     editSetting({ domainProviders: map });
   }
 
+  function openBrevoWebhookSecret() {
+    setBrevoWebhookSecretInput('');
+    setBrevoWebhookSecretShow(true);
+  }
+
+  function saveBrevoWebhookSecret() {
+    editSetting({ brevoWebhookSecret: brevoWebhookSecretInput.trim() });
+  }
+
   function saveTurnstileKey() {
     editSetting({ siteKey: turnstileForm.siteKey, secretKey: turnstileForm.secretKey });
   }
@@ -475,6 +488,7 @@ export default function SysSettingView() {
     delete s.domainProviders;
     delete s.siteKey;
     delete s.secretKey;
+    delete s.brevoWebhookSecret;
     backup.current = JSON.stringify(setting);
   }
 
@@ -486,6 +500,7 @@ export default function SysSettingView() {
     delete form.s3AccessKey;
     delete form.s3SecretKey;
     delete form.tgBotToken;
+    delete form.brevoWebhookSecret;
     delete form.resendTokens;
     delete form.domainProviders;
     editSetting(form, false);
@@ -520,6 +535,7 @@ export default function SysSettingView() {
         setAddS3Show(false);
         setEmailPrefixShow(false);
         setProviderOverrideFormShow(false);
+        setBrevoWebhookSecretShow(false);
       })
       .catch(() => {
         setLoginOpacity(setting.loginOpacity);
@@ -766,6 +782,16 @@ export default function SysSettingView() {
               <SettingItem label={t('brevoSender')}>
                 <span>{setting.hasBrevo ? t('enabled') : t('disabled')}</span>
               </SettingItem>
+              <SettingItem label={t('brevoWebhookSecret')}>
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="truncate max-w-[160px]">
+                    {setting.hasBrevoWebhookSecret ? t('enabled') : t('disabled')}
+                  </span>
+                  <Button size="sm" variant="outline" onClick={openBrevoWebhookSecret}>
+                    <Icon icon="fluent:settings-48-regular" width="16" height="16" />
+                  </Button>
+                </div>
+              </SettingItem>
               <SettingItem label={t('blackList')}>
                 <Button size="sm" variant="outline" onClick={openBlackListForm}>
                   <Icon icon="fluent:settings-48-regular" width="16" height="16" />
@@ -955,6 +981,30 @@ export default function SysSettingView() {
             className="mt-3"
           />
           <Button onClick={saveResendToken} disabled={settingLoading} className="mt-2 w-full">
+            {t('save')}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Brevo webhook secret */}
+      <Dialog open={brevoWebhookSecretShow} onOpenChange={setBrevoWebhookSecretShow}>
+        <DialogContent className="max-w-[380px]">
+          <DialogHeader>
+            <DialogTitle>{t('brevoWebhookSecret')}</DialogTitle>
+          </DialogHeader>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={brevoWebhookSecretInput}
+            onChange={(e) => setBrevoWebhookSecretInput(e.target.value)}
+            placeholder={t('brevoWebhookSecretPlaceholder')}
+          />
+          <p className="text-sm text-muted-foreground">{t('brevoWebhookSecretDesc')}</p>
+          <Button
+            onClick={saveBrevoWebhookSecret}
+            disabled={settingLoading}
+            className="mt-2 w-full"
+          >
             {t('save')}
           </Button>
         </DialogContent>

@@ -25,6 +25,7 @@ export const setting = sqliteTable('setting', {
 	ruleType: integer('rule_type').default(0).notNull(),
 	loginOpacity: integer('login_opacity').default(0.88),
 	resendTokens: text('resend_tokens').default("{}").notNull(),
+	brevoWebhookSecret: text('brevo_webhook_secret').default('').notNull(),
 	domainProviders: text('domain_providers').default("{}").notNull(),
 	managedDomains: text('managed_domains').default("[]").notNull(),
 	adminEmails: text('admin_emails').default("[]").notNull(),
