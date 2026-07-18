@@ -313,100 +313,115 @@ const brevoService = {
 		let updated = 0;
 		let skipped = 0;
 		const errors = [];
-		let offset = 0;
 		const limit = 100;
-		let pages = 0;
-		const seenMessageIds = new Set();
+		const messageIds = await emailService.selectProviderEmailIds(c, 'brevo');
 
-		while (pages < 50) {
-			pages++;
+		for (const messageId of messageIds) {
+			let offset = 0;
+			let pages = 0;
+			let hasMore = true;
 
-			let response;
-			try {
-				response = await client.transactionalEmails.getTransacEmailsList({ limit, offset, sort: 'desc' });
-			} catch (e) {
-				errors.push(`brevo[emails]: ${e?.body?.message || e?.message || 'list failed'}`);
-				break;
-			}
+			while (hasMore && pages < 50) {
+				pages++;
 
-			const list = response?.data?.transactionalEmails || [];
-			const total = Number(response?.data?.count);
-
-			for (const listItem of list) {
-				const messageId = normalizeProviderEmailId('brevo', listItem?.messageId);
-
-				if (!messageId || seenMessageIds.has(messageId)) continue;
-				seenMessageIds.add(messageId);
-
+				let response;
 				try {
-					const existing = await emailService.selectByProviderEmailId(c, 'brevo', messageId);
+					response = await client.transactionalEmails.getTransacEmailsList({
+						messageId: toBrevoApiMessageId(messageId),
+						limit,
+						offset,
+						sort: 'desc'
+					});
+				} catch (e) {
+					errors.push(`brevo[${messageId}][emails]: ${e?.body?.message || e?.message || 'list failed'}`);
+					hasMore = false;
+					break;
+				}
 
-					let detail;
-					try {
-						if (!listItem?.uuid) {
-							throw new BizError('Brevo 邮件 UUID 为空');
-						}
-						const detailResponse = await client.transactionalEmails.getTransacEmailContent({
-							uuid: listItem.uuid
-						});
-						if (!detailResponse?.data) {
-							throw new BizError('Brevo 邮件详情为空');
-						}
-						detail = {
-							listItem,
-							content: detailResponse.data
-						};
-					} catch (e) {
-						errors.push(`brevo[${messageId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
-						continue;
-					}
+				const list = response?.data?.transactionalEmails || [];
+				const total = Number(response?.data?.count);
 
-					const statusParams = buildBrevoDetailStatusParams(
-						messageId,
-						detail.content,
-						listItem.date
+				for (const listItem of list) {
+					const providerEmailId = normalizeProviderEmailId(
+						'brevo',
+						listItem?.messageId || messageId
 					);
-					if (existing) {
-						if (existing.status === statusParams.status) {
-							skipped++;
+
+					try {
+						const existing = await emailService.selectByProviderEmailId(c, 'brevo', providerEmailId);
+
+						let detail;
+						try {
+							if (!listItem?.uuid) {
+								throw new BizError('Brevo 邮件 UUID 为空');
+							}
+							const detailResponse = await client.transactionalEmails.getTransacEmailContent({
+								uuid: listItem.uuid
+							});
+							if (!detailResponse?.data) {
+								throw new BizError('Brevo 邮件详情为空');
+							}
+							detail = {
+								listItem,
+								content: detailResponse.data
+							};
+						} catch (e) {
+							errors.push(`brevo[${providerEmailId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
 							continue;
 						}
 
-						const changed = await emailService.updateProviderEmailStatus(c, {
-							...statusParams,
-							emailId: existing.emailId
-						});
-						if (changed) {
-							updated++;
-						} else {
-							skipped++;
+						const statusParams = buildBrevoDetailStatusParams(
+							providerEmailId,
+							detail.content,
+							listItem.date
+						);
+						if (existing) {
+							if (existing.status === statusParams.status) {
+								skipped++;
+								continue;
+							}
+
+							const changed = await emailService.updateProviderEmailStatus(c, {
+								...statusParams,
+								emailId: existing.emailId
+							});
+							if (changed) {
+								updated++;
+							} else {
+								skipped++;
+							}
+							continue;
 						}
-						continue;
+
+						const emailRow = await this.toEmailRow(c, {
+							event: statusParams.event,
+							'message-id': listItem.messageId || toBrevoApiMessageId(messageId),
+							email: listItem.email,
+							from: listItem.from,
+							subject: listItem.subject,
+							date: listItem.date
+						}, detail);
+
+						await emailService.insertFromProvider(c, 'brevo', providerEmailId, emailRow);
+						inserted++;
+					} catch (e) {
+						errors.push(`brevo[${providerEmailId}]: ${e?.message || e}`);
 					}
-
-					const emailRow = await this.toEmailRow(c, {
-						event: statusParams.event,
-						'message-id': listItem.messageId,
-						email: listItem.email,
-						from: listItem.from,
-						subject: listItem.subject,
-						date: listItem.date
-					}, detail);
-
-					await emailService.insertFromProvider(c, 'brevo', messageId, emailRow);
-					inserted++;
-				} catch (e) {
-					errors.push(`brevo[${listItem.messageId}]: ${e?.message || e}`);
 				}
+
+				if (list.length === 0) {
+					hasMore = false;
+					break;
+				}
+
+				offset += list.length;
+				hasMore = Number.isFinite(total)
+					? offset < total
+					: list.length === limit;
 			}
 
-			if (list.length === 0) break;
-
-			offset += list.length;
-			if (Number.isFinite(total)) {
-				if (offset >= total) break;
-			} else if (list.length < limit) {
-				break;
+			if (hasMore) {
+				errors.push(`brevo[${messageId}][emails]: pagination page limit reached`);
 			}
 		}
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 	getTransacEmailsList: vi.fn(),
 	getTransacEmailContent: vi.fn(),
 	selectByEmailIncludeDel: vi.fn(),
+	selectProviderEmailIds: vi.fn(),
 	selectByProviderEmailId: vi.fn(),
 	insertFromProvider: vi.fn(),
 	updateProviderEmailStatus: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock('../src/service/account-service', () => ({
 
 vi.mock('../src/service/email-service', () => ({
 	default: {
+		selectProviderEmailIds: mocks.selectProviderEmailIds,
 		selectByProviderEmailId: mocks.selectByProviderEmailId,
 		insertFromProvider: mocks.insertFromProvider,
 		updateProviderEmailStatus: mocks.updateProviderEmailStatus
@@ -82,6 +84,8 @@ describe('Brevo webhook contract', () => {
 			userId: 20
 		});
 		mocks.selectByProviderEmailId.mockReset();
+		mocks.selectProviderEmailIds.mockReset();
+		mocks.selectProviderEmailIds.mockResolvedValue(['abc@relay.example']);
 		mocks.insertFromProvider.mockReset();
 		mocks.updateProviderEmailStatus.mockReset();
 		mocks.claimDelivery.mockReset();
@@ -391,6 +395,7 @@ describe('Brevo webhook contract', () => {
 		});
 		expect(mocks.getEmailEventReport).not.toHaveBeenCalled();
 		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({
+			messageId: '<abc@relay.example>',
 			limit: 100,
 			offset: 0,
 			sort: 'desc'
@@ -407,7 +412,7 @@ describe('Brevo webhook contract', () => {
 				data: {
 					count: 2,
 					transactionalEmails: [{
-						messageId: '<first@relay.example>',
+						messageId: '<abc@relay.example>',
 						uuid: 'first-uuid',
 						email: 'first@example.com',
 						from: 'Sender <sender@example.com>',
@@ -420,7 +425,7 @@ describe('Brevo webhook contract', () => {
 				data: {
 					count: 2,
 					transactionalEmails: [{
-						messageId: '<second@relay.example>',
+						messageId: '<abc@relay.example>',
 						uuid: 'second-uuid',
 						email: 'second@example.com',
 						from: 'Sender <sender@example.com>',
@@ -448,11 +453,13 @@ describe('Brevo webhook contract', () => {
 		});
 
 		expect(mocks.getTransacEmailsList).toHaveBeenNthCalledWith(1, {
+			messageId: '<abc@relay.example>',
 			limit: 100,
 			offset: 0,
 			sort: 'desc'
 		});
 		expect(mocks.getTransacEmailsList).toHaveBeenNthCalledWith(2, {
+			messageId: '<abc@relay.example>',
 			limit: 100,
 			offset: 1,
 			sort: 'desc'
@@ -466,6 +473,22 @@ describe('Brevo webhook contract', () => {
 			skipped: 0,
 			errors: []
 		});
+	});
+
+	it('does not call Brevo without an allowed filter when there are no local message IDs', async () => {
+		mocks.selectProviderEmailIds.mockResolvedValue([]);
+
+		await expect(brevoService.syncFromProvider({
+			env: { brevo_api_key: 'xkeysib-test' }
+		})).resolves.toEqual({
+			configured: true,
+			inserted: 0,
+			updated: 0,
+			skipped: 0,
+			errors: []
+		});
+
+		expect(mocks.getTransacEmailsList).not.toHaveBeenCalled();
 	});
 
 	it('treats a missing Brevo API key as an unconfigured provider', async () => {

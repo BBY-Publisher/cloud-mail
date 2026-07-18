@@ -375,6 +375,22 @@ describe('Resend webhook contract', () => {
 		);
 	});
 
+	it('reports a send-only Resend API key once without a pagination error', async () => {
+		mocks.listEmails.mockResolvedValue({
+			data: null,
+			error: {
+				message: 'This API key is restricted to only send emails'
+			}
+		});
+
+		const result = await resendService.syncFromProvider({ env: {} });
+
+		expect(result.errors).toEqual([
+			'resend[sender.example][sent]: This API key is restricted to only send emails'
+		]);
+		expect(mocks.listReceivingEmails).not.toHaveBeenCalled();
+	});
+
 	it('treats missing Resend tokens as an unconfigured provider', async () => {
 		mocks.querySetting.mockResolvedValue({ resendTokens: {} });
 

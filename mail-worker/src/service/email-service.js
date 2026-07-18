@@ -1047,6 +1047,22 @@ const emailService = {
 		return orm(c).select().from(email).where(eq(email.resendEmailId, resendEmailId)).get();
 	},
 
+	async selectProviderEmailIds(c, provider) {
+		const rows = await orm(c).select({
+			providerEmailId: email.resendEmailId
+		}).from(email).where(and(
+			eq(email.provider, provider),
+			ne(email.resendEmailId, ''),
+			eq(email.isDel, isDel.NORMAL)
+		)).all();
+
+		return [...new Set(
+			rows
+				.map(row => normalizeProviderEmailId(provider, row.providerEmailId))
+				.filter(Boolean)
+		)];
+	},
+
 	async selectByProviderEmailId(c, provider, providerEmailId) {
 		const normalizedId = normalizeProviderEmailId(provider, providerEmailId);
 		if (!normalizedId) return null;

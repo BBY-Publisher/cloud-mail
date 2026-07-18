@@ -248,13 +248,17 @@ const resendService = {
 					let after;
 					let hasMore = true;
 					let pages = 0;
+					let restricted = false;
 
 					while (hasMore && pages < 50) {
 						pages++;
 						const listResult = await listPage({ limit: 100, after });
 
 						if (listResult.error) {
-							errors.push(`resend[${domain}][${received ? 'received' : 'sent'}]: ${listResult.error.message || 'list failed'}`);
+							const message = listResult.error.message || 'list failed';
+							errors.push(`resend[${domain}][${received ? 'received' : 'sent'}]: ${message}`);
+							restricted = /restricted to only send emails/i.test(message);
+							hasMore = false;
 							break;
 						}
 
@@ -333,18 +337,22 @@ const resendService = {
 					if (hasMore) {
 						errors.push(`resend[${domain}][${received ? 'received' : 'sent'}]: pagination page limit reached`);
 					}
+
+					return { restricted };
 				};
 
-				await syncCollection({
+				const sentResult = await syncCollection({
 					received: false,
 					listPage: options => resend.emails.list(options),
 					getDetail: id => resend.emails.get(id)
 				});
-				await syncCollection({
-					received: true,
-					listPage: options => resend.emails.receiving.list(options),
-					getDetail: id => resend.emails.receiving.get(id)
-				});
+				if (!sentResult.restricted) {
+					await syncCollection({
+						received: true,
+						listPage: options => resend.emails.receiving.list(options),
+						getDetail: id => resend.emails.receiving.get(id)
+					});
+				}
 			} catch (e) {
 				errors.push(`resend[${domain}]: ${e?.message || e}`);
 			}
