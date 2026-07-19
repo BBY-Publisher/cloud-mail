@@ -272,7 +272,7 @@ const brevoService = {
 			logBrevoSync('email-detail.response', {
 				messageId: normalizedMessageId,
 				uuid: listItem.uuid,
-				eventCount: Array.isArray(response?.events) ? response.data.events.length : 0,
+				eventCount: Array.isArray(response?.events) ? response.events.length : 0,
 				hasBody: Boolean(response?.body)
 			});
 			if (!response?.body) {
