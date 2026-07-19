@@ -80,10 +80,10 @@ function logBrevoSync(stage, details = {}, level = 'info') {
 		: level === 'warn'
 			? console.warn
 			: console.info;
-	logger('[brevo-sync]', {
+	logger(`[brevo-sync] ${JSON.stringify({
 		stage,
 		...details
-	});
+	})}`);
 }
 
 export function getBrevoMessageId(body) {

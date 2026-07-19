@@ -514,9 +514,14 @@ describe('Brevo webhook contract', () => {
 			env: { brevo_api_key: 'xkeysib-private-api-key' }
 		});
 
-		const stages = infoSpy.mock.calls
-			.filter(([prefix]) => prefix === '[brevo-sync]')
-			.map(([, entry]) => entry?.stage);
+		const syncLogCalls = infoSpy.mock.calls
+			.filter(([entry]) => String(entry).startsWith('[brevo-sync] '));
+		expect(syncLogCalls.every(call => call.length === 1)).toBe(true);
+
+		const entries = syncLogCalls.map(([entry]) => (
+			JSON.parse(entry.slice('[brevo-sync] '.length))
+		));
+		const stages = entries.map(entry => entry.stage);
 		expect(stages).toEqual(expect.arrayContaining([
 			'sync.start',
 			'events.request',
@@ -530,6 +535,12 @@ describe('Brevo webhook contract', () => {
 			'page.complete',
 			'sync.complete'
 		]));
+		expect(entries.find(entry => entry.stage === 'sync.complete')).toMatchObject({
+			pages: 1,
+			totalEvents: 1,
+			inserted: 1,
+			errorCount: 0
+		});
 
 		const output = JSON.stringify(infoSpy.mock.calls);
 		expect(output).not.toContain('xkeysib-private-api-key');
