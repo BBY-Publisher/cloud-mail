@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emailConst } from '../src/const/entity-const';
 
 const mocks = vi.hoisted(() => ({
@@ -71,8 +71,13 @@ import brevoService, {
 	getBrevoMessageId
 } from '../src/service/brevo-service';
 
+let infoSpy;
+
 describe('Brevo webhook contract', () => {
 	beforeEach(() => {
+		infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.spyOn(console, 'error').mockImplementation(() => {});
 		mocks.getEmailEventReport.mockReset();
 		mocks.getTransacEmailsList.mockReset();
 		mocks.getTransacEmailContent.mockReset();
@@ -106,6 +111,10 @@ describe('Brevo webhook contract', () => {
 			brevoWebhookSecret: 'webhook-secret'
 		});
 		mocks.updateProviderEmailStatus.mockResolvedValue(true);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	it('reads the official message-id field and normalizes it', () => {
@@ -465,6 +474,69 @@ describe('Brevo webhook contract', () => {
 			skipped: 0,
 			errors: []
 		});
+	});
+
+	it('emits structured sync diagnostics without logging secrets or email content', async () => {
+		mocks.getEmailEventReport.mockResolvedValue({
+			data: {
+				events: [{
+					messageId: '<diagnostic@relay.example>',
+					email: 'private-recipient@example.com',
+					from: 'Private Sender <private-sender@example.net>',
+					event: 'delivered',
+					subject: 'Private subject'
+				}]
+			}
+		});
+		mocks.getTransacEmailsList.mockResolvedValue({
+			data: {
+				count: 1,
+				transactionalEmails: [{
+					messageId: '<diagnostic@relay.example>',
+					uuid: 'diagnostic-uuid',
+					email: 'private-recipient@example.com',
+					subject: 'Private subject'
+				}]
+			}
+		});
+		mocks.getTransacEmailContent.mockResolvedValue({
+			data: {
+				email: 'private-recipient@example.com',
+				subject: 'Private subject',
+				body: '<p>Private body</p>',
+				events: []
+			}
+		});
+		mocks.selectByProviderEmailId.mockResolvedValue(null);
+		mocks.insertFromProvider.mockResolvedValue({ emailId: 202 });
+
+		await brevoService.syncFromProvider({
+			env: { brevo_api_key: 'xkeysib-private-api-key' }
+		});
+
+		const stages = infoSpy.mock.calls
+			.filter(([prefix]) => prefix === '[brevo-sync]')
+			.map(([, entry]) => entry?.stage);
+		expect(stages).toEqual(expect.arrayContaining([
+			'sync.start',
+			'events.request',
+			'events.response',
+			'message.missing',
+			'email-list.request',
+			'email-list.response',
+			'email-detail.request',
+			'email-detail.response',
+			'message.inserted',
+			'page.complete',
+			'sync.complete'
+		]));
+
+		const output = JSON.stringify(infoSpy.mock.calls);
+		expect(output).not.toContain('xkeysib-private-api-key');
+		expect(output).not.toContain('private-recipient@example.com');
+		expect(output).not.toContain('private-sender@example.net');
+		expect(output).not.toContain('Private subject');
+		expect(output).not.toContain('Private body');
 	});
 
 	it('reports an event without a message ID and continues processing later events', async () => {

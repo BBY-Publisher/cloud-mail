@@ -74,6 +74,18 @@ function normalizeAddressList(value) {
 		.filter(item => item.address);
 }
 
+function logBrevoSync(stage, details = {}, level = 'info') {
+	const logger = level === 'error'
+		? console.error
+		: level === 'warn'
+			? console.warn
+			: console.info;
+	logger('[brevo-sync]', {
+		stage,
+		...details
+	});
+}
+
 export function getBrevoMessageId(body) {
 	return normalizeProviderEmailId('brevo', body?.['message-id'] || body?.messageId);
 }
@@ -225,6 +237,10 @@ const brevoService = {
 
 		try {
 			const normalizedMessageId = normalizeProviderEmailId('brevo', messageId);
+			logBrevoSync('email-list.request', {
+				messageId: normalizedMessageId,
+				limit: 100
+			});
 			const listResponse = await client.transactionalEmails.getTransacEmailsList({
 				messageId: toBrevoApiMessageId(normalizedMessageId),
 				limit: 100,
@@ -237,12 +253,29 @@ const brevoService = {
 			const listItem = matchingIdRows.find(item => (
 				!normalizedRecipient || String(item?.email || '').trim().toLowerCase() === normalizedRecipient
 			)) || matchingIdRows[0] || list[0];
+			logBrevoSync('email-list.response', {
+				messageId: normalizedMessageId,
+				resultCount: list.length,
+				matchingCount: matchingIdRows.length,
+				uuid: listItem?.uuid || null
+			});
 
 			if (!listItem?.uuid) {
 				throw new BizError('Brevo 邮件 UUID 为空');
 			}
 
+			logBrevoSync('email-detail.request', {
+				messageId: normalizedMessageId,
+				uuid: listItem.uuid
+			});
 			const response = await client.transactionalEmails.getTransacEmailContent({ uuid: listItem.uuid });
+			logBrevoSync('email-detail.response', {
+				messageId: normalizedMessageId,
+				uuid: listItem.uuid,
+				hasData: Boolean(response?.data),
+				eventCount: Array.isArray(response?.data?.events) ? response.data.events.length : 0,
+				hasBody: Boolean(response?.data?.body)
+			});
 			if (!response?.data) {
 				throw new BizError('Brevo 邮件详情为空');
 			}
@@ -251,6 +284,10 @@ const brevoService = {
 				content: response.data
 			};
 		} catch (e) {
+			logBrevoSync('email-retrieve.error', {
+				messageId: normalizeProviderEmailId('brevo', messageId),
+				error: e?.body?.message || e?.message || 'unknown error'
+			}, 'error');
 			if (e?.body?.message) {
 				throw new BizError(`Brevo 反查邮件详情失败: ${e.body.message}`);
 			}
@@ -262,6 +299,7 @@ const brevoService = {
 		const apiKey = c.env.brevo_api_key;
 
 		if (!apiKey) {
+			logBrevoSync('sync.unconfigured', {}, 'warn');
 			return {
 				configured: false,
 				inserted: 0,
@@ -278,38 +316,72 @@ const brevoService = {
 		let skipped = 0;
 		const errors = [];
 		const limit = 5000;
+		const days = 30;
 		const seenMessageIds = new Set();
 		let offset = 0;
 		let pages = 0;
+		let totalEvents = 0;
 		let hasMore = true;
+
+		logBrevoSync('sync.start', { days, limit });
 
 		while (hasMore && pages < 50) {
 			pages++;
+			const pageStats = {
+				invalid: 0,
+				duplicate: 0,
+				existing: 0,
+				missing: 0,
+				inserted: 0,
+				errors: 0
+			};
 
 			let response;
 			try {
+				logBrevoSync('events.request', {
+					page: pages,
+					days,
+					limit,
+					offset
+				});
 				response = await client.transactionalEmails.getEmailEventReport({
-					days: 30,
+					days,
 					limit,
 					offset,
 					sort: 'desc'
 				});
 			} catch (e) {
-				errors.push(`brevo[events]: ${e?.body?.message || e?.message || 'list failed'}`);
+				const error = e?.body?.message || e?.message || 'list failed';
+				errors.push(`brevo[events]: ${error}`);
+				logBrevoSync('events.error', {
+					page: pages,
+					offset,
+					error
+				}, 'error');
 				hasMore = false;
 				break;
 			}
 
 			const events = Array.isArray(response?.data?.events) ? response.data.events : [];
+			totalEvents += events.length;
+			logBrevoSync('events.response', {
+				page: pages,
+				offset,
+				eventCount: events.length,
+				hasData: Boolean(response?.data),
+				eventsIsArray: Array.isArray(response?.data?.events)
+			});
 
 			for (const event of events) {
 				const providerEmailId = normalizeProviderEmailId('brevo', event?.messageId);
 
 				if (!providerEmailId) {
 					errors.push('brevo[events][unknown]: message ID is empty');
+					pageStats.invalid++;
 					continue;
 				}
 				if (seenMessageIds.has(providerEmailId)) {
+					pageStats.duplicate++;
 					continue;
 				}
 				seenMessageIds.add(providerEmailId);
@@ -318,9 +390,15 @@ const brevoService = {
 					const existing = await emailService.selectByProviderEmailId(c, 'brevo', providerEmailId);
 					if (existing) {
 						skipped++;
+						pageStats.existing++;
 						continue;
 					}
 
+					pageStats.missing++;
+					logBrevoSync('message.missing', {
+						messageId: providerEmailId,
+						event: normalizeBrevoEventName(event?.event)
+					});
 					const detail = await this.retrieveEmail(
 						c,
 						providerEmailId,
@@ -332,21 +410,57 @@ const brevoService = {
 						'message-id': event.messageId
 					}, detail);
 
-					await emailService.insertFromProvider(c, 'brevo', providerEmailId, emailRow);
+					const insertedEmail = await emailService.insertFromProvider(
+						c,
+						'brevo',
+						providerEmailId,
+						emailRow
+					);
 					inserted++;
+					pageStats.inserted++;
+					logBrevoSync('message.inserted', {
+						messageId: providerEmailId,
+						emailId: insertedEmail?.emailId || null
+					});
 				} catch (e) {
-					errors.push(`brevo[${providerEmailId}]: ${e?.message || e}`);
+					const error = e?.message || String(e);
+					errors.push(`brevo[${providerEmailId}]: ${error}`);
+					pageStats.errors++;
+					logBrevoSync('message.error', {
+						messageId: providerEmailId,
+						error
+					}, 'error');
 				}
 			}
 
+			logBrevoSync('page.complete', {
+				page: pages,
+				offset,
+				eventCount: events.length,
+				...pageStats
+			});
 			offset += events.length;
 			hasMore = events.length === limit;
 		}
 
 		if (hasMore) {
 			errors.push('brevo[events]: pagination page limit reached');
+			logBrevoSync('pagination.limit', {
+				pages,
+				offset,
+				limit
+			}, 'error');
 		}
 
+		logBrevoSync('sync.complete', {
+			pages,
+			totalEvents,
+			uniqueMessageIds: seenMessageIds.size,
+			inserted,
+			updated,
+			skipped,
+			errorCount: errors.length
+		});
 		return { configured: true, inserted, updated, skipped, errors };
 	},
 
