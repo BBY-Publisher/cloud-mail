@@ -314,9 +314,9 @@ const brevoService = {
 		let skipped = 0;
 		const errors = [];
 		const limit = 100;
-		const messageIds = await emailService.selectProviderEmailIds(c, 'brevo');
+		const providerEmails = await emailService.selectProviderAccountEmails(c, 'brevo');
 
-		for (const messageId of messageIds) {
+		for (const providerEmail of providerEmails) {
 			let offset = 0;
 			let pages = 0;
 			let hasMore = true;
@@ -327,13 +327,13 @@ const brevoService = {
 				let response;
 				try {
 					response = await client.transactionalEmails.getTransacEmailsList({
-						messageId: toBrevoApiMessageId(messageId),
+						email: providerEmail,
 						limit,
 						offset,
 						sort: 'desc'
 					});
 				} catch (e) {
-					errors.push(`brevo[${messageId}][emails]: ${e?.body?.message || e?.message || 'list failed'}`);
+					errors.push(`brevo[${providerEmail}][emails]: ${e?.body?.message || e?.message || 'list failed'}`);
 					hasMore = false;
 					break;
 				}
@@ -342,10 +342,12 @@ const brevoService = {
 				const total = Number(response?.data?.count);
 
 				for (const listItem of list) {
-					const providerEmailId = normalizeProviderEmailId(
-						'brevo',
-						listItem?.messageId || messageId
-					);
+					const providerEmailId = normalizeProviderEmailId('brevo', listItem?.messageId);
+
+					if (!providerEmailId) {
+						errors.push(`brevo[${providerEmail}][${listItem?.uuid || 'unknown'}]: message ID is empty`);
+						continue;
+					}
 
 					try {
 						const existing = await emailService.selectByProviderEmailId(c, 'brevo', providerEmailId);
@@ -395,7 +397,7 @@ const brevoService = {
 
 						const emailRow = await this.toEmailRow(c, {
 							event: statusParams.event,
-							'message-id': listItem.messageId || toBrevoApiMessageId(messageId),
+							'message-id': listItem.messageId,
 							email: listItem.email,
 							from: listItem.from,
 							subject: listItem.subject,
@@ -421,7 +423,7 @@ const brevoService = {
 			}
 
 			if (hasMore) {
-				errors.push(`brevo[${messageId}][emails]: pagination page limit reached`);
+				errors.push(`brevo[${providerEmail}][emails]: pagination page limit reached`);
 			}
 		}
 

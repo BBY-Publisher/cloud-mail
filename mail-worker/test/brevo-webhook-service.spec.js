@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
 	getTransacEmailsList: vi.fn(),
 	getTransacEmailContent: vi.fn(),
 	selectByEmailIncludeDel: vi.fn(),
-	selectProviderEmailIds: vi.fn(),
+	selectProviderAccountEmails: vi.fn(),
 	selectByProviderEmailId: vi.fn(),
 	insertFromProvider: vi.fn(),
 	updateProviderEmailStatus: vi.fn(),
@@ -39,7 +39,7 @@ vi.mock('../src/service/account-service', () => ({
 
 vi.mock('../src/service/email-service', () => ({
 	default: {
-		selectProviderEmailIds: mocks.selectProviderEmailIds,
+		selectProviderAccountEmails: mocks.selectProviderAccountEmails,
 		selectByProviderEmailId: mocks.selectByProviderEmailId,
 		insertFromProvider: mocks.insertFromProvider,
 		updateProviderEmailStatus: mocks.updateProviderEmailStatus
@@ -84,8 +84,8 @@ describe('Brevo webhook contract', () => {
 			userId: 20
 		});
 		mocks.selectByProviderEmailId.mockReset();
-		mocks.selectProviderEmailIds.mockReset();
-		mocks.selectProviderEmailIds.mockResolvedValue(['abc@relay.example']);
+		mocks.selectProviderAccountEmails.mockReset();
+		mocks.selectProviderAccountEmails.mockResolvedValue(['sender@example.com']);
 		mocks.insertFromProvider.mockReset();
 		mocks.updateProviderEmailStatus.mockReset();
 		mocks.claimDelivery.mockReset();
@@ -395,7 +395,7 @@ describe('Brevo webhook contract', () => {
 		});
 		expect(mocks.getEmailEventReport).not.toHaveBeenCalled();
 		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({
-			messageId: '<abc@relay.example>',
+			email: 'sender@example.com',
 			limit: 100,
 			offset: 0,
 			sort: 'desc'
@@ -453,13 +453,13 @@ describe('Brevo webhook contract', () => {
 		});
 
 		expect(mocks.getTransacEmailsList).toHaveBeenNthCalledWith(1, {
-			messageId: '<abc@relay.example>',
+			email: 'sender@example.com',
 			limit: 100,
 			offset: 0,
 			sort: 'desc'
 		});
 		expect(mocks.getTransacEmailsList).toHaveBeenNthCalledWith(2, {
-			messageId: '<abc@relay.example>',
+			email: 'sender@example.com',
 			limit: 100,
 			offset: 1,
 			sort: 'desc'
@@ -475,8 +475,69 @@ describe('Brevo webhook contract', () => {
 		});
 	});
 
-	it('does not call Brevo without an allowed filter when there are no local message IDs', async () => {
-		mocks.selectProviderEmailIds.mockResolvedValue([]);
+	it('actively imports a Brevo email missing from the local mailbox', async () => {
+		mocks.getTransacEmailsList.mockResolvedValue({
+			data: {
+				count: 1,
+				transactionalEmails: [{
+					messageId: '<missing@relay.example>',
+					uuid: 'missing-uuid',
+					email: 'sender@example.com',
+					from: 'External <external@example.net>',
+					subject: 'Missing message',
+					date: '2026-07-17T08:00:00Z'
+				}]
+			}
+		});
+		mocks.getTransacEmailContent.mockResolvedValue({
+			data: {
+				email: 'sender@example.com',
+				subject: 'Missing message',
+				body: '<p>Recovered</p>',
+				date: '2026-07-17T08:00:00Z',
+				events: [{
+					name: 'delivered',
+					time: '2026-07-17T08:00:10Z'
+				}]
+			}
+		});
+		mocks.selectByProviderEmailId.mockResolvedValue(null);
+		mocks.insertFromProvider.mockResolvedValue({ emailId: 101 });
+
+		const result = await brevoService.syncFromProvider({
+			env: { brevo_api_key: 'xkeysib-test' }
+		});
+
+		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({
+			email: 'sender@example.com',
+			limit: 100,
+			offset: 0,
+			sort: 'desc'
+		});
+		expect(mocks.getTransacEmailContent).toHaveBeenCalledWith({
+			uuid: 'missing-uuid'
+		});
+		expect(mocks.insertFromProvider).toHaveBeenCalledWith(
+			expect.anything(),
+			'brevo',
+			'missing@relay.example',
+			expect.objectContaining({
+				provider: 'brevo',
+				subject: 'Missing message',
+				toEmail: 'sender@example.com'
+			})
+		);
+		expect(result).toMatchObject({
+			configured: true,
+			inserted: 1,
+			updated: 0,
+			skipped: 0,
+			errors: []
+		});
+	});
+
+	it('does not call Brevo when no active system account uses the provider', async () => {
+		mocks.selectProviderAccountEmails.mockResolvedValue([]);
 
 		await expect(brevoService.syncFromProvider({
 			env: { brevo_api_key: 'xkeysib-test' }
