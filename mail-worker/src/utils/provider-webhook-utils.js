@@ -38,7 +38,7 @@ export function providerEmailIdCandidates(provider, value) {
 
 export function toBrevoApiMessageId(value) {
 	const normalized = normalizeProviderEmailId('brevo', value);
-	return normalized ? `<${normalized}>` : '';
+	return normalized ? `<${normalized}>` : value;
 }
 
 export function normalizeBrevoEventName(value) {

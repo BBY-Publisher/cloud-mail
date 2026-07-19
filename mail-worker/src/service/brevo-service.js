@@ -247,7 +247,7 @@ const brevoService = {
 				sort: 'desc'
 			});
 			const candidates = providerEmailIdCandidates('brevo', normalizedMessageId);
-			const list = listResponse?.data?.transactionalEmails || [];
+			const list = listResponse?.transactionalEmails || [];
 			const normalizedRecipient = String(recipient || '').trim().toLowerCase();
 			const matchingIdRows = list.filter(item => candidates.includes(String(item?.messageId || '').trim()));
 			const listItem = matchingIdRows.find(item => (
@@ -272,16 +272,15 @@ const brevoService = {
 			logBrevoSync('email-detail.response', {
 				messageId: normalizedMessageId,
 				uuid: listItem.uuid,
-				hasData: Boolean(response?.data),
-				eventCount: Array.isArray(response?.data?.events) ? response.data.events.length : 0,
-				hasBody: Boolean(response?.data?.body)
+				eventCount: Array.isArray(response?.events) ? response.data.events.length : 0,
+				hasBody: Boolean(response?.body)
 			});
-			if (!response?.data) {
+			if (!response?.body) {
 				throw new BizError('Brevo 邮件详情为空');
 			}
 			return {
 				listItem,
-				content: response.data
+				content: response
 			};
 		} catch (e) {
 			logBrevoSync('email-retrieve.error', {
@@ -362,14 +361,14 @@ const brevoService = {
 				break;
 			}
 
-			const events = Array.isArray(response?.data?.events) ? response.data.events : [];
+			const events = Array.isArray(response?.events) ? response.events : [];
 			totalEvents += events.length;
 			logBrevoSync('events.response', {
 				page: pages,
 				offset,
 				eventCount: events.length,
-				hasData: Boolean(response?.data),
-				eventsIsArray: Array.isArray(response?.data?.events)
+				hasData: Boolean(response?.events),
+				eventsIsArray: Array.isArray(response?.events)
 			});
 
 			for (const event of events) {
