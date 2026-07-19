@@ -1047,34 +1047,6 @@ const emailService = {
 		return orm(c).select().from(email).where(eq(email.resendEmailId, resendEmailId)).get();
 	},
 
-	async selectProviderAccountEmails(c, provider) {
-		const {
-			resendTokens = {},
-			domainProviders = {}
-		} = await settingService.query(c);
-		const rows = await orm(c).select({
-			email: account.email
-		}).from(account).where(and(
-			eq(account.status, 0),
-			eq(account.isDel, isDel.NORMAL)
-		)).all();
-
-		return [...new Set(
-			rows
-				.map(row => String(row.email || '').trim().toLowerCase())
-				.filter(Boolean)
-				.filter(accountEmail => {
-					const domain = emailUtils.getDomain(accountEmail);
-					return pickProvider(domain, {
-						useCloudflareEmail: !!c.env.email,
-						resendToken: resendTokens[domain],
-						brevoApiKey: c.env.brevo_api_key,
-						domainProviders
-					}) === provider;
-				})
-		)];
-	},
-
 	async selectByProviderEmailId(c, provider, providerEmailId) {
 		const normalizedId = normalizeProviderEmailId(provider, providerEmailId);
 		if (!normalizedId) return null;

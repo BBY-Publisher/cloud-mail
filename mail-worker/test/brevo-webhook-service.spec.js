@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
 	getTransacEmailsList: vi.fn(),
 	getTransacEmailContent: vi.fn(),
 	selectByEmailIncludeDel: vi.fn(),
-	selectProviderAccountEmails: vi.fn(),
 	selectByProviderEmailId: vi.fn(),
 	insertFromProvider: vi.fn(),
 	updateProviderEmailStatus: vi.fn(),
@@ -39,7 +38,6 @@ vi.mock('../src/service/account-service', () => ({
 
 vi.mock('../src/service/email-service', () => ({
 	default: {
-		selectProviderAccountEmails: mocks.selectProviderAccountEmails,
 		selectByProviderEmailId: mocks.selectByProviderEmailId,
 		insertFromProvider: mocks.insertFromProvider,
 		updateProviderEmailStatus: mocks.updateProviderEmailStatus
@@ -84,8 +82,6 @@ describe('Brevo webhook contract', () => {
 			userId: 20
 		});
 		mocks.selectByProviderEmailId.mockReset();
-		mocks.selectProviderAccountEmails.mockReset();
-		mocks.selectProviderAccountEmails.mockResolvedValue(['sender@example.com']);
 		mocks.insertFromProvider.mockReset();
 		mocks.updateProviderEmailStatus.mockReset();
 		mocks.claimDelivery.mockReset();
@@ -341,29 +337,21 @@ describe('Brevo webhook contract', () => {
 		expect(mocks.completeDelivery).toHaveBeenCalled();
 	});
 
-	it('actively updates the status of an existing Brevo email from detail events', async () => {
-		mocks.getTransacEmailsList.mockResolvedValue({
+	it('discovers recent Brevo events and skips message IDs already in the system', async () => {
+		mocks.getEmailEventReport.mockResolvedValue({
 			data: {
-				count: 1,
-				transactionalEmails: [{
+				events: [{
 					messageId: '<abc@relay.example>',
-					uuid: 'brevo-uuid',
 					email: 'recipient@example.com',
 					from: 'Sender <sender@example.com>',
-					subject: 'Subject',
-					date: '2026-07-17T08:00:00Z'
-				}]
-			}
-		});
-		mocks.getTransacEmailContent.mockResolvedValue({
-			data: {
-				email: 'recipient@example.com',
-				subject: 'Subject',
-				body: '<p>Hello</p>',
-				date: '2026-07-17T08:00:00Z',
-				events: [{
-					name: 'delivered',
-					time: '2026-07-17T08:00:10Z'
+					event: 'delivered',
+					date: '2026-07-18T08:00:00Z'
+				}, {
+					messageId: '<abc@relay.example>',
+					email: 'recipient@example.com',
+					from: 'Sender <sender@example.com>',
+					event: 'opened',
+					date: '2026-07-18T08:05:00Z'
 				}]
 			}
 		});
@@ -376,128 +364,65 @@ describe('Brevo webhook contract', () => {
 			env: { brevo_api_key: 'xkeysib-test' }
 		});
 
-		expect(mocks.updateProviderEmailStatus).toHaveBeenCalledWith(
+		expect(mocks.getEmailEventReport).toHaveBeenCalledWith({
+			days: 30,
+			limit: 5000,
+			offset: 0,
+			sort: 'desc'
+		});
+		expect(mocks.selectByProviderEmailId).toHaveBeenCalledTimes(1);
+		expect(mocks.selectByProviderEmailId).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({
-				provider: 'brevo',
-				providerEmailId: 'abc@relay.example',
-				emailId: 99,
-				status: emailConst.status.DELIVERED,
-				eventTime: Date.parse('2026-07-17T08:00:10Z')
-			})
+			'brevo',
+			'abc@relay.example'
 		);
+		expect(mocks.getTransacEmailsList).not.toHaveBeenCalled();
+		expect(mocks.getTransacEmailContent).not.toHaveBeenCalled();
+		expect(mocks.insertFromProvider).not.toHaveBeenCalled();
+		expect(mocks.updateProviderEmailStatus).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
 			configured: true,
 			inserted: 0,
-			updated: 1,
-			skipped: 0,
+			updated: 0,
+			skipped: 1,
 			errors: []
-		});
-		expect(mocks.getEmailEventReport).not.toHaveBeenCalled();
-		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({
-			email: 'sender@example.com',
-			limit: 100,
-			offset: 0,
-			sort: 'desc'
-		});
-		expect(mocks.getTransacEmailsList).toHaveBeenCalledTimes(1);
-		expect(mocks.getTransacEmailContent).toHaveBeenCalledWith({
-			uuid: 'brevo-uuid'
 		});
 	});
 
-	it('paginates the Brevo transactional email list using count and offset', async () => {
-		mocks.getTransacEmailsList
-			.mockResolvedValueOnce({
-				data: {
-					count: 2,
-					transactionalEmails: [{
-						messageId: '<abc@relay.example>',
-						uuid: 'first-uuid',
-						email: 'first@example.com',
-						from: 'Sender <sender@example.com>',
-						subject: 'First',
-						date: '2026-07-17T08:00:00Z'
-					}]
-				}
-			})
-			.mockResolvedValueOnce({
-				data: {
-					count: 2,
-					transactionalEmails: [{
-						messageId: '<abc@relay.example>',
-						uuid: 'second-uuid',
-						email: 'second@example.com',
-						from: 'Sender <sender@example.com>',
-						subject: 'Second',
-						date: '2026-07-17T07:00:00Z'
-					}]
-				}
-			});
-		mocks.getTransacEmailContent.mockImplementation(({ uuid }) => ({
+	it('resolves an unknown event message ID to UUID and imports its detail', async () => {
+		mocks.getEmailEventReport.mockResolvedValue({
 			data: {
-				email: uuid === 'first-uuid' ? 'first@example.com' : 'second@example.com',
-				subject: uuid === 'first-uuid' ? 'First' : 'Second',
-				body: '<p>Hello</p>',
-				date: '2026-07-17T08:00:00Z',
-				events: [{ name: 'delivered', time: '2026-07-17T08:00:10Z' }]
+				events: [{
+					messageId: '<missing@relay.example>',
+					email: 'recipient@example.com',
+					from: 'External <external@example.net>',
+					event: 'delivered',
+					subject: 'Missing message',
+					date: '2026-07-18T08:00:00Z'
+				}]
 			}
-		}));
-		mocks.selectByProviderEmailId.mockResolvedValue({
-			emailId: 99,
-			status: emailConst.status.SENT
 		});
-
-		const result = await brevoService.syncFromProvider({
-			env: { brevo_api_key: 'xkeysib-test' }
-		});
-
-		expect(mocks.getTransacEmailsList).toHaveBeenNthCalledWith(1, {
-			email: 'sender@example.com',
-			limit: 100,
-			offset: 0,
-			sort: 'desc'
-		});
-		expect(mocks.getTransacEmailsList).toHaveBeenNthCalledWith(2, {
-			email: 'sender@example.com',
-			limit: 100,
-			offset: 1,
-			sort: 'desc'
-		});
-		expect(mocks.getTransacEmailContent).toHaveBeenCalledWith({ uuid: 'first-uuid' });
-		expect(mocks.getTransacEmailContent).toHaveBeenCalledWith({ uuid: 'second-uuid' });
-		expect(result).toMatchObject({
-			configured: true,
-			inserted: 0,
-			updated: 2,
-			skipped: 0,
-			errors: []
-		});
-	});
-
-	it('actively imports a Brevo email missing from the local mailbox', async () => {
 		mocks.getTransacEmailsList.mockResolvedValue({
 			data: {
 				count: 1,
 				transactionalEmails: [{
 					messageId: '<missing@relay.example>',
 					uuid: 'missing-uuid',
-					email: 'sender@example.com',
-					from: 'External <external@example.net>',
+					email: 'recipient@example.com',
 					subject: 'Missing message',
-					date: '2026-07-17T08:00:00Z'
+					date: '2026-07-18T08:00:00Z'
 				}]
 			}
 		});
 		mocks.getTransacEmailContent.mockResolvedValue({
 			data: {
-				email: 'sender@example.com',
+				email: 'recipient@example.com',
 				subject: 'Missing message',
 				body: '<p>Recovered</p>',
-				date: '2026-07-17T08:00:00Z',
+				date: '2026-07-18T08:00:00Z',
 				events: [{
 					name: 'delivered',
-					time: '2026-07-17T08:00:10Z'
+					time: '2026-07-18T08:00:10Z'
 				}]
 			}
 		});
@@ -508,10 +433,15 @@ describe('Brevo webhook contract', () => {
 			env: { brevo_api_key: 'xkeysib-test' }
 		});
 
-		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({
-			email: 'sender@example.com',
-			limit: 100,
+		expect(mocks.getEmailEventReport).toHaveBeenCalledWith({
+			days: 30,
+			limit: 5000,
 			offset: 0,
+			sort: 'desc'
+		});
+		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({
+			messageId: '<missing@relay.example>',
+			limit: 100,
 			sort: 'desc'
 		});
 		expect(mocks.getTransacEmailContent).toHaveBeenCalledWith({
@@ -524,7 +454,8 @@ describe('Brevo webhook contract', () => {
 			expect.objectContaining({
 				provider: 'brevo',
 				subject: 'Missing message',
-				toEmail: 'sender@example.com'
+				sendEmail: 'external@example.net',
+				toEmail: 'recipient@example.com'
 			})
 		);
 		expect(result).toMatchObject({
@@ -536,8 +467,81 @@ describe('Brevo webhook contract', () => {
 		});
 	});
 
-	it('does not call Brevo when no active system account uses the provider', async () => {
-		mocks.selectProviderAccountEmails.mockResolvedValue([]);
+	it('reports an event without a message ID and continues processing later events', async () => {
+		mocks.getEmailEventReport.mockResolvedValue({
+			data: {
+				events: [{
+					email: 'missing-id@example.com',
+					event: 'delivered'
+				}, {
+					messageId: '<existing@relay.example>',
+					email: 'recipient@example.com',
+					event: 'delivered'
+				}]
+			}
+		});
+		mocks.selectByProviderEmailId.mockResolvedValue({
+			emailId: 99,
+			status: emailConst.status.SENT
+		});
+
+		await expect(brevoService.syncFromProvider({
+			env: { brevo_api_key: 'xkeysib-test' }
+		})).resolves.toEqual({
+			configured: true,
+			inserted: 0,
+			updated: 0,
+			skipped: 1,
+			errors: ['brevo[events][unknown]: message ID is empty']
+		});
+
+		expect(mocks.selectByProviderEmailId).toHaveBeenCalledTimes(1);
+		expect(mocks.getTransacEmailsList).not.toHaveBeenCalled();
+	});
+
+	it('paginates recent events and deduplicates message IDs across pages', async () => {
+		const duplicateEvents = Array.from({ length: 5000 }, () => ({
+			messageId: '<existing@relay.example>',
+			email: 'recipient@example.com',
+			event: 'delivered'
+		}));
+		mocks.getEmailEventReport
+			.mockResolvedValueOnce({ data: { events: duplicateEvents } })
+			.mockResolvedValueOnce({ data: { events: [] } });
+		mocks.selectByProviderEmailId.mockResolvedValue({
+			emailId: 99,
+			status: emailConst.status.SENT
+		});
+
+		const result = await brevoService.syncFromProvider({
+			env: { brevo_api_key: 'xkeysib-test' }
+		});
+
+		expect(mocks.getEmailEventReport).toHaveBeenNthCalledWith(1, {
+			days: 30,
+			limit: 5000,
+			offset: 0,
+			sort: 'desc'
+		});
+		expect(mocks.getEmailEventReport).toHaveBeenNthCalledWith(2, {
+			days: 30,
+			limit: 5000,
+			offset: 5000,
+			sort: 'desc'
+		});
+		expect(mocks.selectByProviderEmailId).toHaveBeenCalledTimes(1);
+		expect(result).toMatchObject({
+			inserted: 0,
+			updated: 0,
+			skipped: 1,
+			errors: []
+		});
+	});
+
+	it('returns event report API errors without a false pagination error', async () => {
+		mocks.getEmailEventReport.mockRejectedValue({
+			body: { message: 'event history denied' }
+		});
 
 		await expect(brevoService.syncFromProvider({
 			env: { brevo_api_key: 'xkeysib-test' }
@@ -546,10 +550,8 @@ describe('Brevo webhook contract', () => {
 			inserted: 0,
 			updated: 0,
 			skipped: 0,
-			errors: []
+			errors: ['brevo[events]: event history denied']
 		});
-
-		expect(mocks.getTransacEmailsList).not.toHaveBeenCalled();
 	});
 
 	it('treats a missing Brevo API key as an unconfigured provider', async () => {

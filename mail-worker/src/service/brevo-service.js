@@ -99,42 +99,6 @@ export function buildBrevoStatusParams(body) {
 	return params;
 }
 
-export function buildBrevoDetailStatusParams(messageId, content, fallbackDate) {
-	const events = Array.isArray(content?.events) ? content.events : [];
-	const supportedEvents = events
-		.map(event => {
-			const name = normalizeBrevoEventName(event?.name);
-			const status = statusEventMap[name];
-			const eventTime = Date.parse(event?.time || '');
-			return {
-				name,
-				status,
-				eventTime: Number.isFinite(eventTime) ? eventTime : 0,
-				statusRank: getProviderStatusRank(status)
-			};
-		})
-		.filter(event => event.status !== undefined);
-
-	supportedEvents.sort((left, right) => (
-		left.eventTime - right.eventTime || left.statusRank - right.statusRank
-	));
-
-	const latest = supportedEvents.at(-1) || {
-		name: 'sent',
-		status: emailConst.status.SENT,
-		eventTime: Date.parse(content?.date || fallbackDate || '') || 0,
-		statusRank: getProviderStatusRank(emailConst.status.SENT)
-	};
-	const params = buildBrevoStatusParams({
-		event: latest.name,
-		'message-id': messageId,
-		ts_event: latest.eventTime
-	});
-	params.event = latest.name;
-	params.eventTime = latest.eventTime;
-	return params;
-}
-
 const brevoService = {
 
 	async webhooks(c, params) {
@@ -310,121 +274,77 @@ const brevoService = {
 		const client = new BrevoClient({ apiKey });
 
 		let inserted = 0;
-		let updated = 0;
+		const updated = 0;
 		let skipped = 0;
 		const errors = [];
-		const limit = 100;
-		const providerEmails = await emailService.selectProviderAccountEmails(c, 'brevo');
+		const limit = 5000;
+		const seenMessageIds = new Set();
+		let offset = 0;
+		let pages = 0;
+		let hasMore = true;
 
-		for (const providerEmail of providerEmails) {
-			let offset = 0;
-			let pages = 0;
-			let hasMore = true;
+		while (hasMore && pages < 50) {
+			pages++;
 
-			while (hasMore && pages < 50) {
-				pages++;
+			let response;
+			try {
+				response = await client.transactionalEmails.getEmailEventReport({
+					days: 30,
+					limit,
+					offset,
+					sort: 'desc'
+				});
+			} catch (e) {
+				errors.push(`brevo[events]: ${e?.body?.message || e?.message || 'list failed'}`);
+				hasMore = false;
+				break;
+			}
 
-				let response;
-				try {
-					response = await client.transactionalEmails.getTransacEmailsList({
-						email: providerEmail,
-						limit,
-						offset,
-						sort: 'desc'
-					});
-				} catch (e) {
-					errors.push(`brevo[${providerEmail}][emails]: ${e?.body?.message || e?.message || 'list failed'}`);
-					hasMore = false;
-					break;
+			const events = Array.isArray(response?.data?.events) ? response.data.events : [];
+
+			for (const event of events) {
+				const providerEmailId = normalizeProviderEmailId('brevo', event?.messageId);
+
+				if (!providerEmailId) {
+					errors.push('brevo[events][unknown]: message ID is empty');
+					continue;
 				}
+				if (seenMessageIds.has(providerEmailId)) {
+					continue;
+				}
+				seenMessageIds.add(providerEmailId);
 
-				const list = response?.data?.transactionalEmails || [];
-				const total = Number(response?.data?.count);
-
-				for (const listItem of list) {
-					const providerEmailId = normalizeProviderEmailId('brevo', listItem?.messageId);
-
-					if (!providerEmailId) {
-						errors.push(`brevo[${providerEmail}][${listItem?.uuid || 'unknown'}]: message ID is empty`);
+				try {
+					const existing = await emailService.selectByProviderEmailId(c, 'brevo', providerEmailId);
+					if (existing) {
+						skipped++;
 						continue;
 					}
 
-					try {
-						const existing = await emailService.selectByProviderEmailId(c, 'brevo', providerEmailId);
+					const detail = await this.retrieveEmail(
+						c,
+						providerEmailId,
+						event.email,
+						client
+					);
+					const emailRow = await this.toEmailRow(c, {
+						...event,
+						'message-id': event.messageId
+					}, detail);
 
-						let detail;
-						try {
-							if (!listItem?.uuid) {
-								throw new BizError('Brevo 邮件 UUID 为空');
-							}
-							const detailResponse = await client.transactionalEmails.getTransacEmailContent({
-								uuid: listItem.uuid
-							});
-							if (!detailResponse?.data) {
-								throw new BizError('Brevo 邮件详情为空');
-							}
-							detail = {
-								listItem,
-								content: detailResponse.data
-							};
-						} catch (e) {
-							errors.push(`brevo[${providerEmailId}]: ${e?.body?.message || e?.message || 'detail failed'}`);
-							continue;
-						}
-
-						const statusParams = buildBrevoDetailStatusParams(
-							providerEmailId,
-							detail.content,
-							listItem.date
-						);
-						if (existing) {
-							if (existing.status === statusParams.status) {
-								skipped++;
-								continue;
-							}
-
-							const changed = await emailService.updateProviderEmailStatus(c, {
-								...statusParams,
-								emailId: existing.emailId
-							});
-							if (changed) {
-								updated++;
-							} else {
-								skipped++;
-							}
-							continue;
-						}
-
-						const emailRow = await this.toEmailRow(c, {
-							event: statusParams.event,
-							'message-id': listItem.messageId,
-							email: listItem.email,
-							from: listItem.from,
-							subject: listItem.subject,
-							date: listItem.date
-						}, detail);
-
-						await emailService.insertFromProvider(c, 'brevo', providerEmailId, emailRow);
-						inserted++;
-					} catch (e) {
-						errors.push(`brevo[${providerEmailId}]: ${e?.message || e}`);
-					}
+					await emailService.insertFromProvider(c, 'brevo', providerEmailId, emailRow);
+					inserted++;
+				} catch (e) {
+					errors.push(`brevo[${providerEmailId}]: ${e?.message || e}`);
 				}
-
-				if (list.length === 0) {
-					hasMore = false;
-					break;
-				}
-
-				offset += list.length;
-				hasMore = Number.isFinite(total)
-					? offset < total
-					: list.length === limit;
 			}
 
-			if (hasMore) {
-				errors.push(`brevo[${providerEmail}][emails]: pagination page limit reached`);
-			}
+			offset += events.length;
+			hasMore = events.length === limit;
+		}
+
+		if (hasMore) {
+			errors.push('brevo[events]: pagination page limit reached');
 		}
 
 		return { configured: true, inserted, updated, skipped, errors };
