@@ -1,3 +1,8 @@
+import {
+	addColumnIfMissing,
+	tableExists
+} from '../utils/d1-schema-utils';
+
 const LOCK_TTL_MS = 60_000;
 const schemaPromises = new WeakMap();
 
@@ -42,36 +47,9 @@ export const WEBHOOK_SYNC_SCHEMA_STATEMENTS = [
 ];
 
 async function ensureEmailProviderSchema(db) {
-	const table = await db.prepare(`
-		SELECT name
-		FROM sqlite_master
-		WHERE type = 'table' AND name = 'email'
-		LIMIT 1
-	`).first();
-	if (!table) return;
+	if (!await tableExists(db, 'email')) return;
 
-	let column = await db.prepare(`
-		SELECT name
-		FROM pragma_table_info('email')
-		WHERE name = 'provider'
-		LIMIT 1
-	`).first();
-	if (!column) {
-		try {
-			await db.prepare('ALTER TABLE email ADD COLUMN provider TEXT').run();
-		} catch (error) {
-			// Multiple Worker isolates may run the lazy migration together.
-			// Ignore only the race where another isolate added the column.
-			column = await db.prepare(`
-				SELECT name
-				FROM pragma_table_info('email')
-				WHERE name = 'provider'
-				LIMIT 1
-			`).first();
-			if (!column) throw error;
-		}
-	}
-
+	await addColumnIfMissing(db, 'email', 'provider', 'TEXT');
 	await db.prepare(`
 		CREATE INDEX IF NOT EXISTS idx_email_provider
 		ON email(provider)
