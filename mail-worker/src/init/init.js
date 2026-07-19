@@ -70,11 +70,21 @@ const dbInit = {
 	},
 
 	async v3_7DB(c) {
-		// These are additive side tables rather than new required email columns.
-		// That keeps both deployment orders safe:
-		//   1. new Worker before /init (webhook path creates them lazily)
-		//   2. /init before new Worker (the old Worker ignores them)
+		// The sync schema is additive and also reconciles email.provider.
+		// This keeps both deployment orders safe:
+		//   1. new Worker before /init (provider paths migrate lazily)
+		//   2. /init before new Worker (existing columns/tables stay unchanged)
 		await ensureWebhookSyncSchema(c);
+
+		const providerColumn = await c.env.db.prepare(`
+			SELECT name
+			FROM pragma_table_info('email')
+			WHERE name = 'provider'
+			LIMIT 1
+		`).first();
+		if (!providerColumn) {
+			throw new Error('v3_7DB: email.provider column was not created');
+		}
 
 		const rows = await c.env.db.prepare(`
 			SELECT name

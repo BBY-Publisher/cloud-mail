@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import providerWebhookStateService, {
 	ensureWebhookSyncSchema
 } from '../src/service/provider-webhook-state-service';
+import emailService from '../src/service/email-service';
 
 const context = { env };
 
@@ -48,6 +49,61 @@ describe('provider webhook state storage', () => {
 			SELECT name FROM sqlite_master
 			WHERE type = 'table' AND name = 'webhook_delivery'
 		`).first()).toBeTruthy();
+	});
+
+	it('upgrades a pre-provider email table before provider ID lookup', async () => {
+		await context.env.db.prepare('DROP TABLE IF EXISTS email').run();
+		await context.env.db.prepare(`
+			CREATE TABLE email (
+				email_id INTEGER PRIMARY KEY AUTOINCREMENT,
+				send_email TEXT,
+				name TEXT,
+				account_id INTEGER NOT NULL,
+				user_id INTEGER NOT NULL,
+				subject TEXT,
+				code TEXT NOT NULL DEFAULT '',
+				text TEXT,
+				content TEXT,
+				cc TEXT DEFAULT '[]',
+				bcc TEXT DEFAULT '[]',
+				recipient TEXT,
+				to_email TEXT NOT NULL DEFAULT '',
+				to_name TEXT NOT NULL DEFAULT '',
+				in_reply_to TEXT DEFAULT '',
+				relation TEXT DEFAULT '',
+				message_id TEXT DEFAULT '',
+				type INTEGER NOT NULL DEFAULT 0,
+				status INTEGER NOT NULL DEFAULT 0,
+				resend_email_id TEXT,
+				message TEXT,
+				unread INTEGER NOT NULL DEFAULT 0,
+				create_time TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				is_del INTEGER NOT NULL DEFAULT 0
+			)
+		`).run();
+		await context.env.db.prepare(`
+			INSERT INTO email (
+				account_id, user_id, resend_email_id, status
+			) VALUES (1, 1, 'legacy@relay.example', 1)
+		`).run();
+
+		await ensureWebhookSyncSchema(context, true);
+
+		const columns = await context.env.db.prepare('PRAGMA table_info(email)').all();
+		expect(columns.results.map(column => column.name)).toContain('provider');
+		expect(await context.env.db.prepare(`
+			SELECT name
+			FROM sqlite_master
+			WHERE type = 'index' AND name = 'idx_email_provider'
+		`).first()).toBeTruthy();
+		await expect(emailService.selectByProviderEmailId(
+			context,
+			'brevo',
+			'legacy@relay.example'
+		)).resolves.toMatchObject({
+			resendEmailId: 'legacy@relay.example',
+			provider: 'brevo'
+		});
 	});
 
 	it('claims a delivery only once and recognizes a completed duplicate', async () => {
