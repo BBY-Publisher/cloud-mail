@@ -830,7 +830,7 @@ function close() {
     display: grid;
     grid-template-rows: auto 1fr;
     overflow: hidden;
-    @media (max-width: 1024px) and (max-height: 699px) {
+    @media (max-width: 1024px) or (max-height: 699px) {
       width: 100%;
       height: 100%;
       border-radius: 0;
