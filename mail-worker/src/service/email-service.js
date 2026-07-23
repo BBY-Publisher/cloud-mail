@@ -243,20 +243,19 @@ const emailService = {
 			const domain = '@' + emailUtils.getDomain(email);
 			return domainList.includes(domain);
 		});
-
-		if (!settingService.isAdmin(setting, userRow.email)) {
-
-			//发件被禁用
-			if (roleRow.sendType === 'ban') {
-				throw new BizError(t('bannedSend'), 403);
-			}
-
-			//发件被禁用
-			if (roleRow.sendType === 'internal' && !allInternal) {
-				throw new BizError(t('onlyInternalSend'), 403);
-			}
-
-		}
+		//
+		// if (!settingService.isAdmin(setting, userRow.email)) {
+		//
+		// 	//发件被禁用
+		// 	if (roleRow.sendType === 'ban') {
+		// 		throw new BizError(t('bannedSend'), 403);
+		// 	}
+		//
+		// 	//发件被禁用
+		// 	if (roleRow.sendType === 'internal' && !allInternal) {
+		// 		throw new BizError(t('onlyInternalSend'), 403);
+		// 	}
+		// }
 
 		//如果不是管理员，权限设置了发送次数
 		if (!settingService.isAdmin(setting, userRow.email) && roleRow.sendCount) {
