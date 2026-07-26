@@ -4,6 +4,10 @@ import {
 	MAX_ATTACHMENT_UPLOAD_SIZE,
 	isUploadedAttachmentKey
 } from '../const/attachment-const';
+import settingService from './setting-service';
+import domainUtils from '../utils/domain-uitls';
+import { settingConst } from '../const/entity-const';
+import { presignR2Put } from '../utils/r2-presign-utils';
 
 export { MAX_ATTACHMENT_UPLOAD_SIZE };
 
@@ -38,10 +42,9 @@ function contentDisposition(filename, disposition = 'attachment') {
 	return `${safeDisposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
-export function validateAttachmentUpload({ size, filename, body }) {
+function validateAttachmentMetadata({ size, filename, contentType }) {
 	const numericSize = Number(size);
 	const normalizedFilename = normalizeFilename(filename);
-
 	if (!Number.isSafeInteger(numericSize) || numericSize <= 0) {
 		throw new BizError('File size is required', 400);
 	}
@@ -51,13 +54,17 @@ export function validateAttachmentUpload({ size, filename, body }) {
 	if (!normalizedFilename) {
 		throw new BizError('File name is required', 400);
 	}
-	if (!body) {
-		throw new BizError('File body is required', 400);
-	}
+
+	const normalizedContentType = String(contentType || 'application/octet-stream')
+		.split(';')[0]
+		.replace(/[\r\n]/g, '')
+		.trim()
+		.slice(0, 255) || 'application/octet-stream';
 
 	return {
 		size: numericSize,
-		filename: normalizedFilename
+		filename: normalizedFilename,
+		contentType: normalizedContentType
 	};
 }
 
@@ -96,48 +103,67 @@ export const attachmentUploadService = {
 		return validated;
 	},
 
-	async upload(c) {
+	async createPresignedUpload(c, params, dependencies = {}) {
 		if (!c.env.r2) {
 			throw new BizError('R2 attachment upload is not enabled', 409);
 		}
 
-		const { size, filename } = validateAttachmentUpload({
-			size: c.req.header('content-length') || c.req.header('x-file-size'),
-			filename: c.req.header('x-file-name'),
-			body: c.req.raw.body
-		});
-		const contentType = String(c.req.header('content-type') || 'application/octet-stream')
-			.split(';')[0]
-			.trim() || 'application/octet-stream';
-		const disposition = c.req.header('x-file-disposition');
-		const key = `attachments/${uuidv4()}${fileExtension(filename)}`;
+		const { size, filename, contentType } = validateAttachmentMetadata(params || {});
+		const setting = dependencies.setting || await settingService.query(c);
+		const {
+			bucket,
+			endpoint,
+			region,
+			s3AccessKey,
+			s3SecretKey,
+			forcePathStyle
+		} = setting || {};
+		if (!bucket || !endpoint || !s3AccessKey || !s3SecretKey) {
+			throw new BizError(
+				'Direct R2 upload requires Bucket, Endpoint, Access Key and Secret Key in S3 configuration',
+				409
+			);
+		}
 
-		const storedObject = await c.env.r2.put(key, c.req.raw.body, {
-			httpMetadata: {
-				contentType,
-				contentDisposition: contentDisposition(filename, disposition),
-				cacheControl: 'private, max-age=86400'
+		const disposition = params?.disposition === 'inline' ? 'inline' : 'attachment';
+		const key = `attachments/${uuidv4()}${fileExtension(filename)}`;
+		const encodedFilename = encodeURIComponent(filename);
+		const dispositionHeader = contentDisposition(filename, disposition);
+		const uploadHeaders = {
+			'Content-Type': contentType,
+			'Content-Disposition': dispositionHeader,
+			'x-amz-meta-filename': encodedFilename
+		};
+		const sign = dependencies.sign || presignR2Put;
+		const uploadUrl = await sign({
+			method: 'PUT',
+			bucket,
+			key,
+			endpoint: domainUtils.toOssDomain(endpoint),
+			region: region || 'auto',
+			expiresIn: 300,
+			forcePathStyle: forcePathStyle === settingConst.forcePathStyle.OPEN,
+			headers: {
+				'content-length': String(size),
+				'content-type': contentType,
+				'content-disposition': dispositionHeader,
+				'x-amz-meta-filename': encodedFilename
 			},
-			customMetadata: {
-				filename
+			credentials: {
+				accessKeyId: s3AccessKey,
+				secretAccessKey: s3SecretKey
 			}
 		});
-		const storedSize = Number(storedObject?.size);
-		if (Number.isSafeInteger(storedSize) && storedSize > MAX_ATTACHMENT_UPLOAD_SIZE) {
-			await c.env.r2.delete(key);
-			throw new BizError('A single file cannot exceed 64 MiB', 413);
-		}
-		const actualSize = Number.isSafeInteger(storedSize) && storedSize > 0
-			? storedSize
-			: size;
 
 		return {
 			storageType: 'R2',
 			key,
 			url: `${new URL(c.req.url).origin}/api/oss/${key}`,
+			uploadUrl,
+			uploadHeaders,
 			filename,
 			contentType,
-			size: actualSize
+			size
 		};
 	}
 };

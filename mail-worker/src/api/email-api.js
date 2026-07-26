@@ -32,8 +32,8 @@ app.post('/email/send', async (c) => {
 	return c.json(result.ok(email));
 });
 
-app.put('/email/attachment/upload', async (c) => {
-	const attachment = await attachmentUploadService.upload(c);
+app.post('/email/attachment/presign', async (c) => {
+	const attachment = await attachmentUploadService.createPresignedUpload(c, await c.req.json());
 	return c.json(result.ok(attachment));
 });
 

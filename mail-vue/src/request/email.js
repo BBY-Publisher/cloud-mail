@@ -1,4 +1,6 @@
 import http from '@/axios/index.js';
+import axios from 'axios';
+import {uploadFileDirectlyToR2} from '@/utils/direct-r2-upload.js';
 
 export function emailList(accountId, allReceive, emailId, timeSort, size, type) {
     return http.get('/email/list', {params: {accountId, allReceive, emailId, timeSort, size, type}})
@@ -26,16 +28,14 @@ export function emailSend(form,progress) {
 }
 
 export function attachmentUpload(file, disposition = 'attachment', progress = () => {}) {
-    return http.put('/email/attachment/upload', file, {
-        headers: {
-            'Content-Type': file.type || 'application/octet-stream',
-            'X-File-Name': encodeURIComponent(file.name || 'attachment'),
-            'X-File-Disposition': disposition,
-            'X-File-Size': String(file.size),
-        },
-        onUploadProgress: progress,
-        noMsg: true,
-        timeout: 0,
+    return uploadFileDirectlyToR2({
+        file,
+        disposition,
+        createUpload: metadata => http.post('/email/attachment/presign', metadata, {
+            noMsg: true
+        }),
+        put: (url, body, options) => axios.put(url, body, options),
+        onUploadProgress: progress
     })
 }
 

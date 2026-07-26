@@ -30,10 +30,10 @@ describe('Cloud Mail worker', () => {
 		expect(body.code).not.toBe(404);
 	});
 
-	it('passes large API upload requests through without rebuilding the request body', async () => {
-		const request = new Request('http://example.com/api/email/attachment/upload', {
-			method: 'PUT',
-			body: new Uint8Array([1, 2, 3])
+	it('passes API requests through without rebuilding the request', async () => {
+		const request = new Request('http://example.com/api/email/attachment/presign', {
+			method: 'POST',
+			body: JSON.stringify({ filename: 'report.pdf', size: 1024 })
 		});
 		const apiFetch = vi.fn(async received => {
 			expect(received).toBe(request);
