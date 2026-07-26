@@ -9,14 +9,75 @@ import { parseHTML } from 'linkedom';
 import { v4 as uuidv4 } from 'uuid';
 import domainUtils from '../utils/domain-uitls';
 import settingService from "./setting-service";
+import { isUploadedAttachmentKey } from '../const/attachment-const';
 
 export const ATTACHMENT_INSERT_BATCH_SIZE = 5;
+
+export function isUploadedAttachmentUrl(src) {
+	try {
+		const url = new URL(String(src || ''), 'https://cloud-mail.invalid');
+		return url.pathname.startsWith('/api/oss/attachments/');
+	} catch (_) {
+		return false;
+	}
+}
 
 export async function insertAttachmentRows(c, rows) {
 	for (let index = 0; index < rows.length; index += ATTACHMENT_INSERT_BATCH_SIZE) {
 		const batch = rows.slice(index, index + ATTACHMENT_INSERT_BATCH_SIZE);
 		await orm(c).insert(att).values(batch).run();
 	}
+}
+
+export async function toStoredAttachment(attachment, userId, accountId, emailId) {
+	const mimeType = attachment.contentType
+		|| attachment.mimeType
+		|| (typeof attachment.type === 'string' ? attachment.type : null)
+		|| 'application/octet-stream';
+
+	if (attachment.storageType === 'R2' && attachment.key) {
+		if (!isUploadedAttachmentKey(attachment.key)) {
+			throw new Error('Invalid uploaded attachment key');
+		}
+
+		return {
+			row: {
+				userId,
+				accountId,
+				emailId,
+				key: attachment.key,
+				size: Number(attachment.size) || 0,
+				filename: attachment.filename,
+				mimeType,
+				type: attConst.type.ATT
+			},
+			upload: null
+		};
+	}
+
+	const buff = fileUtils.base64ToUint8Array(attachment.content);
+	const key = constant.ATTACHMENT_PREFIX
+		+ await fileUtils.getBuffHash(buff)
+		+ fileUtils.getExtFileName(attachment.filename);
+
+	return {
+		row: {
+			userId,
+			accountId,
+			emailId,
+			key,
+			size: buff.length,
+			filename: attachment.filename,
+			mimeType,
+			type: attConst.type.ATT
+		},
+		upload: {
+			key,
+			content: buff,
+			contentType: mimeType,
+			filename: attachment.filename
+		}
+	};
 }
 
 const attService = {
@@ -70,6 +131,7 @@ const attService = {
 
 			//邮件正文base64图片转cid附件
 			const src = img.getAttribute('src');
+			const uploadedAttachmentUrl = isUploadedAttachmentUrl(src);
 			if (src && src.startsWith('data:image')) {
 				const file = fileUtils.base64ToFile(src);
 				const buff = await file.arrayBuffer();
@@ -91,7 +153,8 @@ const attService = {
 			}
 
 			//邮件正文站内图片转cid附件
-			if (src && (src.startsWith(domainUtils.toOssDomain(r2Domain)) || src.startsWith('attachments/'))) {
+			if (src && !uploadedAttachmentUrl
+				&& (src.startsWith(domainUtils.toOssDomain(r2Domain)) || src.startsWith('attachments/'))) {
 
 				const cid = uuidv4().replace(/-/g, '')
 				img.setAttribute('src', 'cid:' + cid);
@@ -158,25 +221,22 @@ const attService = {
 	async saveSendAtt(c, attList, userId, accountId, emailId) {
 
 		const attDataList = [];
+		const uploads = [];
 
 		for (let att of attList) {
-			att.buff = fileUtils.base64ToUint8Array(att.content);
-			att.key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(att.buff) + fileUtils.getExtFileName(att.filename);
-			const attData = { userId, accountId, emailId };
-			attData.key = att.key;
-			attData.size = att.buff.length;
-			attData.filename = att.filename;
-			attData.mimeType = att.type;
-			attData.type = attConst.type.ATT;
-			attDataList.push(attData);
+			const stored = await toStoredAttachment(att, userId, accountId, emailId);
+			attDataList.push(stored.row);
+			if (stored.upload) {
+				uploads.push(stored.upload);
+			}
 		}
 
 		await insertAttachmentRows(c, attDataList);
 
-		for (let att of attList) {
-			await r2Service.putObj(c, att.key, att.buff, {
-				contentType: att.type,
-				contentDisposition: `attachment;filename=${att.filename}`
+		for (let upload of uploads) {
+			await r2Service.putObj(c, upload.key, upload.content, {
+				contentType: upload.contentType,
+				contentDisposition: `attachment;filename=${upload.filename}`
 			});
 		}
 

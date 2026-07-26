@@ -15,7 +15,8 @@ import {useSettingStore} from '@/store/setting.js'
 defineExpose({
   clearEditor,
   focus,
-  getContent
+  getContent,
+  insertContent
 })
 
 const props = defineProps({
@@ -26,12 +27,16 @@ const props = defineProps({
   editorId: {
     type: String,
     default: () => `editor-${Date.now()}`
+  },
+  imageUploader: {
+    type: Function,
+    default: null
   }
 });
 
 
 const {locale} = useI18n()
-const emit = defineEmits(['change','focus']);
+const emit = defineEmits(['change','focus','files-drop']);
 const editor = shallowRef(null);
 const isInitialized = ref(false);
 const editorRef = ref(null);
@@ -72,6 +77,24 @@ function clearEditor() {
   }
 }
 
+function escapeAttribute(value) {
+  return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+}
+
+function insertContent(content) {
+  editor.value?.insertContent(content)
+}
+
+function insertImage(url, filename) {
+  const safeUrl = escapeAttribute(url)
+  const alt = escapeAttribute(String(filename || '').replace(/\.[^.]+$/, ''))
+  insertContent(`<img src="${safeUrl}" alt="${alt}" data-mce-src="${safeUrl}" style="max-width: 100%;">`)
+}
+
 function initTinyMCE() {
   if (window.tinymce) {
     initEditor();
@@ -91,8 +114,8 @@ function initEditor() {
     statusbar: false,
     height: "100%",
     auto_focus: true,
-    //relative_urls: false,  //阻止 img标签域名和网站域名相同 自动把链接转换相对路径
-    //remove_script_host: false, // 阻止删除 URL 中的域名
+    relative_urls: false,
+    remove_script_host: false,
     forced_root_block: 'div',
     skin: `${uiStore.dark ? 'oxide-dark' : 'oxide'}`,
     content_css: `/tinymce/css/index.css,${uiStore.dark ? 'dark' : 'default'}`,
@@ -124,6 +147,18 @@ function initEditor() {
       ed.on('focus', () => {
         emit('focus', focus);
       })
+      ed.on('dragover', (event) => {
+        if (event.dataTransfer?.types?.includes('Files')) {
+          event.preventDefault()
+        }
+      })
+      ed.on('drop', (event) => {
+        const files = Array.from(event.dataTransfer?.files || [])
+        if (files.length > 0) {
+          event.preventDefault()
+          emit('files-drop', files)
+        }
+      })
     },
     autofocus: true,
     branding: false,
@@ -145,7 +180,13 @@ function initEditor() {
         }
         const MAX = 10;
         const selected = files.slice(0, MAX);
-        const ed = tinymce.activeEditor;
+        const ed = editor.value;
+
+        if (props.imageUploader) {
+          const uploads = await props.imageUploader(selected)
+          uploads.forEach(upload => insertImage(upload.url, upload.filename))
+          return
+        }
 
         const readFile = (file) => new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -158,7 +199,7 @@ function initEditor() {
 
         dataUrls.forEach((dataUrl, index) => {
           const file = selected[index];
-          const alt = (file.name || '').replace(/\.[^.]+$/, '');
+          const alt = escapeAttribute((file.name || '').replace(/\.[^.]+$/, ''));
           const imgHtml = `<img src="${dataUrl}" alt="${alt}" data-mce-src="${dataUrl}">`;
           if (ed) {
             ed.insertContent(imgHtml);

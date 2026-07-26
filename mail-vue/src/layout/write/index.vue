@@ -1,6 +1,16 @@
 <template>
   <div class="send" v-show="show">
-    <div class="write-box">
+    <div
+        class="write-box"
+        @dragenter.stop.prevent="handleDragEnter"
+        @dragover.stop.prevent="isDragging = true"
+        @dragleave.stop.prevent="handleDragLeave"
+        @drop.stop.prevent="handleDrop"
+    >
+      <div v-if="isDragging" class="drop-overlay">
+        <Icon icon="material-symbols:upload-file-rounded" width="48" height="48"/>
+        <span>{{ t('dropFilesHere') }}</span>
+      </div>
       <div class="title">
         <div class="title-left">
           <span class="title-text">
@@ -108,7 +118,14 @@
           </template>
         </el-input-tag>
         <el-input v-model="form.subject" :placeholder="t('subject')" />
-        <tinyEditor :def-value="defValue" ref="editor" @change="change" @focus="focusChange" />
+        <tinyEditor
+            :def-value="defValue"
+            :image-uploader="uploadEditorImages"
+            ref="editor"
+            @change="change"
+            @focus="focusChange"
+            @files-drop="handleDroppedFiles"
+        />
         <div class="button-item">
           <div class="att-add" @click="chooseFile">
             <Icon icon="iconamoon:attachment-fill" width="24" height="24"/>
@@ -120,19 +137,21 @@
             <el-checkbox v-model="form.includeSignature">{{ t('includeSignature') }}</el-checkbox>
           </div>
           <div class="att-list">
-            <div class="att-item" v-for="(item,index) in form.attachments" :key="index">
+            <div class="att-item" v-for="(item,index) in form.attachments" :key="item.key || item.localId || index">
               <Icon v-bind="getIconByName(item.filename)"/>
               <span class="att-filename">{{ item.filename }}</span>
-              <span class="att-size">{{ formatBytes(item.size) }}</span>
+              <span class="att-size">
+                {{ item.uploading ? t('uploadProgress', {progress: item.progress || 0}) : formatBytes(item.size) }}
+              </span>
               <Icon style="cursor: pointer;" icon="material-symbols-light:close-rounded" @click="delAtt(index)"
                     width="22" height="22"/>
             </div>
           </div>
           <div class="send-actions">
             <el-button @click="openPreview">{{ $t('preview') }}</el-button>
-            <el-button type="primary" @click="sendEmail" v-if="form.sendType === 'reply'">{{ $t('reply') }}</el-button>
-            <el-button type="primary" @click="sendEmail" v-else-if="form.sendType === 'forward'">{{ $t('forward') }}</el-button>
-            <el-button type="primary" @click="sendEmail" v-else>{{ $t('send') }}</el-button>
+            <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-if="form.sendType === 'reply'">{{ $t('reply') }}</el-button>
+            <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-else-if="form.sendType === 'forward'">{{ $t('forward') }}</el-button>
+            <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-else>{{ $t('send') }}</el-button>
           </div>
         </div>
       </div>
@@ -171,7 +190,7 @@ import shadowHtml from '@/components/shadow-html/index.vue'
 import {h, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, computed, watch} from "vue";
 import {Icon} from "@iconify/vue";
 import {useUserStore} from "@/store/user.js";
-import {emailSend} from "@/request/email.js";
+import {attachmentUpload, emailSend} from "@/request/email.js";
 import {isEmail} from "@/utils/verify-utils.js";
 import {useAccountStore} from "@/store/account.js";
 import {useEmailStore} from "@/store/email.js";
@@ -190,6 +209,7 @@ import router from "@/router/index.js";
 import {ElMessageBox} from "element-plus";
 import {signatureGet} from "@/request/signature.js";
 import {useSignatureStore} from "@/store/signature.js";
+import {classifyComposeFiles, isImageUpload} from "@/utils/compose-upload.js";
 
 defineExpose({
   open,
@@ -216,6 +236,9 @@ const contactsTabRef = ref({})
 const showContacts = ref(false)
 const previewShow = ref(false)
 const previewSignature = ref('')
+const isDragging = ref(false)
+const uploadingCount = ref(0)
+let dragDepth = 0
 const recipientSelect = ref()
 const ccSelect = ref()
 const bccSelect = ref()
@@ -253,6 +276,7 @@ const activeTagField = ref('to')
 const selectRecipientList = ref([])
 
 const contacts = computed(() => writerStore.sendRecipientRecord.map(item => ({email: item})))
+const r2UploadEnabled = computed(() => Boolean(settingStore.settings.hasR2))
 
 const previewHtml = computed(() => {
   const content = form.content || ''
@@ -380,6 +404,15 @@ function toggleBcc() {
 }
 
 function clearContent() {
+  if (uploadingCount.value > 0) {
+    ElMessage({
+      message: t('uploadingFiles'),
+      type: 'warning',
+      plain: true,
+    })
+    return
+  }
+
   ElMessageBox.confirm(t('clearContentConfirm'), {
     confirmButtonText: t('confirm'),
     cancelButtonText: t('cancel'),
@@ -420,26 +453,204 @@ function chooseFile() {
   const doc = document.createElement("input")
   doc.setAttribute("type", "file")
   doc.multiple = true;
-  doc.click()
   doc.onchange = async (e) => {
+    await handleSelectedFiles(e.target.files)
+  }
+  doc.click()
+}
 
-    const fileList = e.target.files;
+function handleDragEnter() {
+  dragDepth += 1
+  isDragging.value = true
+}
 
-    for (const file of fileList) {
-
-      const size = file.size
-      const filename = file.name
-      const contentType = file.type
-
-      const content = await fileToBase64(file)
-      form.attachments.push({content, filename, size, contentType})
-
-    }
-
+function handleDragLeave() {
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) {
+    isDragging.value = false
   }
 }
 
+async function handleDrop(event) {
+  dragDepth = 0
+  isDragging.value = false
+  await handleSelectedFiles(event.dataTransfer?.files)
+}
+
+async function handleDroppedFiles(files) {
+  dragDepth = 0
+  isDragging.value = false
+  await handleSelectedFiles(files)
+}
+
+function notifyRejectedFiles(rejected) {
+  if (rejected.length === 0) return
+  ElMessage({
+    message: t('fileTooLarge64', {count: rejected.length}),
+    type: 'warning',
+    plain: true,
+  })
+}
+
+function notifyAttachmentLimit(count) {
+  if (count <= 0) return
+  ElMessage({
+    message: t('attachmentCountLimit', {count}),
+    type: 'warning',
+    plain: true,
+  })
+}
+
+function uploadErrorCode(error) {
+  return Number(error?.code || error?.response?.data?.code || error?.response?.status || 0)
+}
+
+async function uploadFileToR2(file, disposition, onProgress = () => {}) {
+  let lastError
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      uploadingCount.value += 1
+      return await attachmentUpload(file, disposition, event => {
+        const total = event.total || file.size
+        onProgress(Math.min(99, Math.round((event.loaded * 100) / total)))
+      })
+    } catch (error) {
+      lastError = error
+      const code = uploadErrorCode(error)
+      if (code >= 400 && code < 500) break
+    } finally {
+      uploadingCount.value = Math.max(0, uploadingCount.value - 1)
+    }
+  }
+  throw lastError
+}
+
+function notifyUploadFailure(file, error) {
+  ElNotification({
+    title: t('fileUploadFailedTitle'),
+    type: 'error',
+    message: t('fileUploadFailed', {
+      name: file.name,
+      message: error?.message || error?.response?.data?.message || t('reqFailErrorMsg')
+    }),
+    position: 'bottom-right'
+  })
+}
+
+async function addLegacyAttachments(files) {
+  const remaining = Math.max(0, 10 - form.attachments.length)
+  const selected = files.slice(0, remaining)
+  notifyAttachmentLimit(files.length - selected.length)
+
+  for (const file of selected) {
+    try {
+      const content = await fileToBase64(file)
+      form.attachments.push({
+        content,
+        filename: file.name,
+        size: file.size,
+        contentType: file.type || 'application/octet-stream'
+      })
+    } catch (error) {
+      notifyUploadFailure(file, error)
+    }
+  }
+}
+
+async function uploadEditorImages(files) {
+  const {accepted, rejected} = classifyComposeFiles(files)
+  notifyRejectedFiles(rejected)
+  const uploads = []
+
+  for (const file of accepted.filter(isImageUpload)) {
+    try {
+      if (r2UploadEnabled.value) {
+        uploads.push(await uploadFileToR2(file, 'inline'))
+      } else {
+        uploads.push({
+          url: await fileToBase64(file, true),
+          filename: file.name
+        })
+      }
+    } catch (error) {
+      notifyUploadFailure(file, error)
+    }
+  }
+
+  return uploads
+}
+
+async function handleSelectedFiles(files) {
+  const {accepted, rejected} = classifyComposeFiles(files)
+  notifyRejectedFiles(rejected)
+  if (accepted.length === 0) return
+
+  if (!r2UploadEnabled.value) {
+    await addLegacyAttachments(accepted)
+    return
+  }
+
+  let attachmentSlots = Math.max(0, 10 - form.attachments.length)
+  for (const file of accepted) {
+    if (isImageUpload(file)) {
+      try {
+        const upload = await uploadFileToR2(file, 'inline')
+        editor.value.insertContent(
+            `<img src="${escapeHtmlAttribute(upload.url)}" alt="${escapeHtmlAttribute(file.name.replace(/\.[^.]+$/, ''))}" style="max-width: 100%;">`
+        )
+      } catch (error) {
+        notifyUploadFailure(file, error)
+      }
+      continue
+    }
+
+    if (attachmentSlots <= 0) {
+      notifyAttachmentLimit(1)
+      continue
+    }
+    attachmentSlots -= 1
+
+    const pending = reactive({
+      localId: `${Date.now()}-${Math.random()}`,
+      filename: file.name,
+      size: file.size,
+      contentType: file.type || 'application/octet-stream',
+      uploading: true,
+      progress: 0,
+    })
+    form.attachments.push(pending)
+
+    try {
+      const upload = await uploadFileToR2(file, 'attachment', progress => {
+        pending.progress = progress
+      })
+      Object.assign(pending, upload, {uploading: false, progress: 100})
+    } catch (error) {
+      const index = form.attachments.indexOf(pending)
+      if (index !== -1) form.attachments.splice(index, 1)
+      notifyUploadFailure(file, error)
+    }
+  }
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+}
+
 async function sendEmail() {
+
+  if (uploadingCount.value > 0) {
+    ElMessage({
+      message: t('uploadingFiles'),
+      type: 'warning',
+      plain: true,
+    })
+    return
+  }
 
   if (form.receiveEmail.length === 0) {
     ElMessage({
@@ -564,6 +775,8 @@ function addRecipientRecord() {
 }
 
 function resetForm() {
+  dragDepth = 0
+  isDragging.value = false
   form.receiveEmail = []
   form.cc = []
   form.bcc = []
@@ -736,6 +949,15 @@ function close() {
 
   if (selectStatus) openSelect();
 
+  if (uploadingCount.value > 0) {
+    ElMessage({
+      message: t('uploadingFiles'),
+      type: 'warning',
+      plain: true,
+    })
+    return
+  }
+
   if (!form.content) {
     form.content = editor.value.getContent();
   }
@@ -747,7 +969,8 @@ function close() {
     return;
   }
 
-  if (!(form.content || form.subject || form.receiveEmail.length > 0 || form.cc.length > 0 || form.bcc.length > 0)) {
+  if (!(form.content || form.subject || form.receiveEmail.length > 0 || form.cc.length > 0
+      || form.bcc.length > 0 || form.attachments.length > 0)) {
     show.value = false
     resetForm()
     return;
@@ -820,6 +1043,7 @@ function close() {
   justify-content: center;
 
   .write-box {
+    position: relative;
     background: var(--el-bg-color);
     width: min(1367px, calc(100% - 80px));
     box-shadow: var(--el-box-shadow-light);
@@ -830,6 +1054,24 @@ function close() {
     display: grid;
     grid-template-rows: auto 1fr;
     overflow: hidden;
+
+    .drop-overlay {
+      position: absolute;
+      inset: 12px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--el-color-primary);
+      font-size: 18px;
+      font-weight: 600;
+      background: color-mix(in srgb, var(--el-bg-color) 88%, transparent);
+      border: 2px dashed var(--el-color-primary);
+      border-radius: 8px;
+      pointer-events: none;
+    }
     @media (max-width: 1024px) or (max-height: 699px) {
       width: 100%;
       height: 100%;

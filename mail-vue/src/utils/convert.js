@@ -14,7 +14,8 @@ export function cvtR2Url(key) {
     let domain = settings.r2Domain
 
     if (!domain) {
-        return key;
+        const cleanKey = String(key).replace(/^\/+/, '')
+        return `/api/oss/${cleanKey}`;
     }
 
     if (!domain.startsWith('http')) {

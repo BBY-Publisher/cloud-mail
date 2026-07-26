@@ -25,6 +25,20 @@ export function emailSend(form,progress) {
     })
 }
 
+export function attachmentUpload(file, disposition = 'attachment', progress = () => {}) {
+    return http.put('/email/attachment/upload', file, {
+        headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-File-Name': encodeURIComponent(file.name || 'attachment'),
+            'X-File-Disposition': disposition,
+            'X-File-Size': String(file.size),
+        },
+        onUploadProgress: progress,
+        noMsg: true,
+        timeout: 0,
+    })
+}
+
 export function emailSync() {
     return http.post('/email/sync', null, { noMsg: true, timeout: 120 * 1000 })
 }

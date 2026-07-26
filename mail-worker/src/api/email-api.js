@@ -5,6 +5,7 @@ import userContext from '../security/user-context';
 import attService from '../service/att-service';
 import providerSyncService from '../service/provider-sync-service';
 import superAdminService from '../service/super-admin-service';
+import attachmentUploadService from '../service/attachment-upload-service';
 
 app.get('/email/list', async (c) => {
 	const data = await emailService.list(c, c.req.query(), userContext.getUserId(c));
@@ -29,6 +30,11 @@ app.get('/email/attList', async (c) => {
 app.post('/email/send', async (c) => {
 	const email = await emailService.send(c, await c.req.json(), userContext.getUserId(c));
 	return c.json(result.ok(email));
+});
+
+app.put('/email/attachment/upload', async (c) => {
+	const attachment = await attachmentUploadService.upload(c);
+	return c.json(result.ok(attachment));
 });
 
 app.put('/email/read', async (c) => {

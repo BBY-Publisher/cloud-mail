@@ -36,6 +36,14 @@ import {
 	normalizeProviderEmailId,
 	providerEmailIdCandidates
 } from '../utils/provider-webhook-utils';
+import {
+	appendUploadedAttachmentLinks,
+	appendUploadedAttachmentTextLinks,
+	findInvalidAttachment,
+	normalizeUploadedAttachmentUrls,
+	partitionEmailAttachments
+} from '../utils/attachment-email-utils';
+import attachmentUploadService from './attachment-upload-service';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -225,6 +233,17 @@ const emailService = {
 			attachments = [] //附件
 		} = params;
 
+		const invalidAttachment = findInvalidAttachment(attachments);
+		if (invalidAttachment) {
+			throw new BizError(
+				`Invalid attachment or file exceeds 64 MiB: ${invalidAttachment.filename || 'attachment'}`,
+				413
+			);
+		}
+		if (attachments.length > 10) {
+			throw new BizError(t('attLimit'));
+		}
+
 		const setting = await settingService.query(c);
 		const { resendTokens, domainProviders, r2Domain, send, domainList } = setting;
 		const brevoApiKey = c.env.brevo_api_key;
@@ -325,6 +344,19 @@ const emailService = {
 		text = signedContent.text;
 
 		let { imageDataList, html } = await attService.toImageUrlHtml(c, content);
+		const {
+			uploaded,
+			provider: providerAttachments
+		} = partitionEmailAttachments(attachments);
+		const validatedUploadedAttachments =
+			await attachmentUploadService.validateReferences(c, uploaded);
+		const uploadedAttachments = normalizeUploadedAttachmentUrls(
+			validatedUploadedAttachments,
+			new URL(c.req.url).origin
+		);
+		attachments = [...validatedUploadedAttachments, ...providerAttachments];
+		html = appendUploadedAttachmentLinks(html, uploadedAttachments);
+		text = appendUploadedAttachmentTextLinks(text, uploadedAttachments);
 
 		let emailRow = {
 			messageId: null,
@@ -362,7 +394,7 @@ const emailService = {
 				subject,
 				text,
 				html,
-				attachments: [...imageDataList, ...attachments],
+				attachments: [...imageDataList, ...providerAttachments],
 				sendType,
 				messageId: emailRow.messageId,
 				references: referencesValue
@@ -450,9 +482,6 @@ const emailService = {
 
 		//保存普通附件
 		if (attachments?.length > 0) {
-			if (attachments.length > 10) {
-				throw new BizError(t('attLimit'));
-			}
 			await attService.saveSendAtt(c, attachments, userId, accountId, emailResult.emailId);
 		}
 
