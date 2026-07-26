@@ -6,22 +6,34 @@ import emailService from './service/email-service';
 import kvObjService from './service/kv-obj-service';
 import oauthService from "./service/oauth-service";
 import analysisService from './service/analysis-service';
+import { Hono } from 'hono';
+
+const apiApp = new Hono();
+apiApp.route('/api', app);
+
+export async function dispatchRequest(
+	req,
+	env,
+	ctx,
+	apiFetch = (request, bindings, executionContext) =>
+		apiApp.fetch(request, bindings, executionContext)
+) {
+	const url = new URL(req.url);
+
+	if (url.pathname.startsWith('/api/')) {
+		return apiFetch(req, env, ctx);
+	}
+
+	if (['/static/','/attachments/'].some(p => url.pathname.startsWith(p))) {
+		return await kvObjService.toObjResp({ env }, url.pathname.substring(1));
+	}
+
+	return env.assets.fetch(req);
+}
+
 export default {
-	 async fetch(req, env, ctx) {
-
-		const url = new URL(req.url)
-
-		if (url.pathname.startsWith('/api/')) {
-			url.pathname = url.pathname.replace('/api', '')
-			req = new Request(url.toString(), req)
-			return app.fetch(req, env, ctx);
-		}
-
-		 if (['/static/','/attachments/'].some(p => url.pathname.startsWith(p))) {
-			 return await kvObjService.toObjResp( { env }, url.pathname.substring(1));
-		 }
-
-		return env.assets.fetch(req);
+	async fetch(req, env, ctx) {
+		return dispatchRequest(req, env, ctx);
 	},
 	email: email,
 	async scheduled(c, env, ctx) {

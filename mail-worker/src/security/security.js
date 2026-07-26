@@ -117,7 +117,10 @@ const premKey = {
 
 app.use('*', async (c, next) => {
 
-	const path = c.req.path;
+	const requestPath = c.req.path;
+	const path = requestPath.startsWith('/api/')
+		? requestPath.slice('/api'.length)
+		: requestPath;
 
 	const index = exclude.findIndex(item => {
 		return path.startsWith(item);
