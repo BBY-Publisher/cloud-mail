@@ -1123,10 +1123,11 @@ function close() {
     }
 
     .container {
-      height: 100%;
+      //height: 100%;
       display: grid;
       grid-template-rows: auto auto auto auto 1fr auto;
       gap: 15px;
+      overflow: scroll;
 
       .item-title {
       }
