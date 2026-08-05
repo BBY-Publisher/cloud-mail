@@ -226,6 +226,8 @@ const handleDelete = () => {
 .box {
   height: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .header-actions {
@@ -287,7 +289,8 @@ const handleDelete = () => {
 
 
 .scrollbar {
-  height: calc(100% - 38px);
+  flex: 1;
+  min-height: 0;
   width: 100%;
 }
 
