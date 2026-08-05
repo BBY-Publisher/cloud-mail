@@ -168,7 +168,7 @@ export default function ContentView() {
 
   return (
     <div className="grid h-full grid-rows-[auto_auto_1fr] overflow-hidden">
-      <div className="md:hidden flex items-center gap-2 border-b border-border bg-background px-3 py-2">
+      <div className="lg:hidden flex items-center gap-2 border-b border-border bg-background px-3 py-2">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background font-mono text-[10px] tabular-nums">
           {(account.currentAccount?.email?.[0] || '?').toUpperCase()}
         </span>

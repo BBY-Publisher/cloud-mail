@@ -73,7 +73,7 @@ export default function MobileAccountSelector() {
   const others = accounts.filter((a) => a.accountId !== currentAccountId);
 
   return (
-    <div className="md:hidden border-b border-border bg-background">
+    <div className="lg:hidden border-b border-border bg-background">
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <button
