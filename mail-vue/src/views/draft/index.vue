@@ -1,29 +1,33 @@
 <template>
-  <emailScroll ref="scroll"
-               :allow-star="false"
-               :getEmailList="getEmailList"
-               :emailDelete="emailDelete"
-               :star-add="starAdd"
-               :star-cancel="starCancel"
-               @jump="jumpContent"
-               actionLeft="6px"
-               :show-account-icon="false"
-               :show-first-loading="false"
-               :showStar="false"
-               @delete-draft="deleteDraft"
-               :type="'draft'"
-  >
-    <template #name="props">
-      <span class="send-email">{{ props.email.receiveEmail?.join(',') || '(' + $t('noRecipient') + ')' }}</span>
-    </template>
-    <template #subject="props">
-      {{ props.email.subject || '(' + $t('noSubject') + ')' }}
-    </template>
-  </emailScroll>
+  <div class="email-view">
+    <MobileAccountSelector />
+    <emailScroll ref="scroll"
+                 :allow-star="false"
+                 :getEmailList="getEmailList"
+                 :emailDelete="emailDelete"
+                 :star-add="starAdd"
+                 :star-cancel="starCancel"
+                 @jump="jumpContent"
+                 actionLeft="6px"
+                 :show-account-icon="false"
+                 :show-first-loading="false"
+                 :showStar="false"
+                 @delete-draft="deleteDraft"
+                 :type="'draft'"
+    >
+      <template #name="props">
+        <span class="send-email">{{ props.email.receiveEmail?.join(',') || '(' + $t('noRecipient') + ')' }}</span>
+      </template>
+      <template #subject="props">
+        {{ props.email.subject || '(' + $t('noSubject') + ')' }}
+      </template>
+    </emailScroll>
+  </div>
 </template>
 
 <script setup>
 import emailScroll from "@/components/email-scroll/index.vue"
+import MobileAccountSelector from "@/components/mobile-account-selector/index.vue"
 import {emailDelete} from "@/request/email.js";
 import {starAdd, starCancel} from "@/request/star.js";
 import {defineOptions, ref, watch, toRaw} from "vue";
@@ -92,5 +96,19 @@ async function jumpContent(email) {
 <style>
 .send-email {
   font-weight: normal;
+}
+</style>
+
+<style scoped>
+.email-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.email-view :deep(.email-container) {
+  flex: 1;
+  min-height: 0;
 }
 </style>

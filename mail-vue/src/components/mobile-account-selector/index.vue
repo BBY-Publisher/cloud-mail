@@ -1,5 +1,5 @@
 <template>
-  <div class="mobile-account-selector">
+  <div class="mobile-account-selector" v-if="canShow">
     <el-dropdown
       trigger="click"
       :hide-on-click="false"
@@ -14,7 +14,7 @@
         <Icon icon="mingcute:down-small-fill" width="18" height="18" class="caret" :class="{ open }" />
       </button>
       <template #dropdown>
-        <el-dropdown-menu class="account-menu">
+        <el-dropdown-menu class="account-menu" style="width: 100%;">
           <div class="menu-header">{{ t('switchMailbox') }}</div>
           <div v-if="loading && accounts.length === 0" class="menu-status">
             {{ t('loadMailboxesFailed') }}
@@ -52,15 +52,24 @@ import { Icon } from '@iconify/vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/store/account.js'
+import { useUiStore } from '@/store/ui.js'
+import { useSettingStore } from '@/store/setting.js'
 import { accountList } from '@/request/account.js'
 import { hasPerm } from '@/perm/perm.js'
 
 const { t } = useI18n()
 const accountStore = useAccountStore()
+const uiStore = useUiStore()
+const settingStore = useSettingStore()
 
 const accounts = ref([])
 const loading = ref(false)
 const open = ref(false)
+
+const accountBoxVisible = computed(
+  () => uiStore.accountShow && settingStore.settings.manyEmail === 0 && hasPerm('account:query')
+)
+const canShow = computed(() => !accountBoxVisible.value)
 
 const currentEmail = computed(() => accountStore.currentAccount?.email || '')
 const currentName = computed(() => accountStore.currentAccount?.name || '')
@@ -200,11 +209,19 @@ function onVisibleChange(visible) {
 }
 
 .account-menu {
-  max-width: calc(100vw - 24px);
-  width: 320px;
+  width: 100%;
   max-height: 70vh;
   overflow: auto;
   padding: 0;
+}
+
+:deep(.el-popper) {
+  width: 100%;
+  max-width: 100vw;
+}
+
+:deep(.el-popper .el-dropdown-menu) {
+  width: 100%;
 }
 
 .menu-header {
