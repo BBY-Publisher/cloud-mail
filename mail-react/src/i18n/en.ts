@@ -409,6 +409,10 @@ const en: Record<string, string> = {
     permSender: 'Sender',
     permAdmin: 'Admin',
     mailboxRole: 'My Role',
+    switchMailbox: 'Switch Mailbox',
+    switchMailboxHint: 'Tap to view another mailbox',
+    noOtherMailboxes: 'No other mailboxes available',
+    loadMailboxesFailed: 'Failed to load mailboxes',
 };
 
 export default en;

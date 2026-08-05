@@ -409,6 +409,10 @@ const zh = {
   permSender: '发件者',
   permAdmin: '管理员',
   mailboxRole: '我的权限',
+  switchMailbox: '切换邮箱',
+  switchMailboxHint: '点击切换其他邮箱',
+  noOtherMailboxes: '暂无可切换的邮箱',
+  loadMailboxesFailed: '加载邮箱列表失败',
 };
 
 export default zh;

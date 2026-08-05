@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Icon } from '@iconify/react';
 import EmailScroll, { type EmailScrollHandle } from '@/components/email-scroll';
+import MobileAccountSelector from '@/components/mobile-account-selector';
 import {
   emailList,
   emailRead,
@@ -161,37 +162,40 @@ export default function EmailView() {
   }
 
   return (
-    <EmailScroll
-      ref={scrollRef}
-      getEmailList={getEmailList}
-      emailDelete={emailDeleteFn}
-      emailRead={emailRead}
-      starAdd={starAddFn}
-      starCancel={starCancelFn}
-      timeSort={timeSort}
-      showUnread
-      showStatus={false}
-      showAccountIcon
-      showUserInfo={false}
-      showStar
-      allowStar
-      actionLeft="4px"
-      onJump={jumpContent}
-      starSuccess={addStar}
-      cancelSuccess={cancelStar}
-      headerFirstSlot={
-        <Icon
-          className="cursor-pointer"
-          icon={
-            timeSort === 0
-              ? 'material-symbols-light:timer-arrow-down-outline'
-              : 'material-symbols-light:timer-arrow-up-outline'
-          }
-          width="28"
-          height="28"
-          onClick={changeTimeSort}
-        />
-      }
-    />
+    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+      <MobileAccountSelector />
+      <EmailScroll
+        ref={scrollRef}
+        getEmailList={getEmailList}
+        emailDelete={emailDeleteFn}
+        emailRead={emailRead}
+        starAdd={starAddFn}
+        starCancel={starCancelFn}
+        timeSort={timeSort}
+        showUnread
+        showStatus={false}
+        showAccountIcon
+        showUserInfo={false}
+        showStar
+        allowStar
+        actionLeft="4px"
+        onJump={jumpContent}
+        starSuccess={addStar}
+        cancelSuccess={cancelStar}
+        headerFirstSlot={
+          <Icon
+            className="cursor-pointer"
+            icon={
+              timeSort === 0
+                ? 'material-symbols-light:timer-arrow-down-outline'
+                : 'material-symbols-light:timer-arrow-up-outline'
+            }
+            width="28"
+            height="28"
+            onClick={changeTimeSort}
+          />
+        }
+      />
+    </div>
   );
 }
