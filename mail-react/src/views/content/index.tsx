@@ -167,7 +167,15 @@ export default function ContentView() {
   }
 
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+    <div className="grid h-full grid-rows-[auto_auto_1fr] overflow-hidden">
+      <div className="md:hidden flex items-center gap-2 border-b border-border bg-background px-3 py-2">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background font-mono text-[10px] tabular-nums">
+          {(account.currentAccount?.email?.[0] || '?').toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground tabular-nums">
+          {account.currentAccount?.email || t('switchMailboxHint')}
+        </span>
+      </div>
       <div className="flex items-center gap-5 border-b border-border px-4 py-2 text-lg">
         <Icon
           icon="material-symbols-light:arrow-back-ios-new"
