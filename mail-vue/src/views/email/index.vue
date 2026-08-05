@@ -1,25 +1,28 @@
 <template>
-  <emailScroll ref="scroll"
-               :cancel-success="cancelStar"
-               :star-success="addStar"
-               :getEmailList="getEmailList"
-               :emailDelete="emailDelete"
-               :star-add="starAdd"
-               :star-cancel="starCancel"
-               :time-sort="params.timeSort"
-               :email-read="emailRead"
-               :show-unread="true"
-               actionLeft="4px"
-               @jump="jumpContent"
-  >
-    <template #first>
-      <Icon class="icon" @click="changeTimeSort" icon="material-symbols-light:timer-arrow-down-outline"
-            v-if="params.timeSort === 0" width="28" height="28"/>
-      <Icon class="icon" @click="changeTimeSort" icon="material-symbols-light:timer-arrow-up-outline" v-else
-            width="28" height="28"/>
-    </template>
+  <div class="email-view">
+    <MobileAccountSelector />
+    <emailScroll ref="scroll"
+                 :cancel-success="cancelStar"
+                 :star-success="addStar"
+                 :getEmailList="getEmailList"
+                 :emailDelete="emailDelete"
+                 :star-add="starAdd"
+                 :star-cancel="starCancel"
+                 :time-sort="params.timeSort"
+                 :email-read="emailRead"
+                 :show-unread="true"
+                 actionLeft="4px"
+                 @jump="jumpContent"
+    >
+      <template #first>
+        <Icon class="icon" @click="changeTimeSort" icon="material-symbols-light:timer-arrow-down-outline"
+              v-if="params.timeSort === 0" width="28" height="28"/>
+        <Icon class="icon" @click="changeTimeSort" icon="material-symbols-light:timer-arrow-up-outline" v-else
+              width="28" height="28"/>
+      </template>
 
-  </emailScroll>
+    </emailScroll>
+  </div>
 </template>
 
 <script setup>
@@ -27,6 +30,7 @@ import {useAccountStore} from "@/store/account.js";
 import {useEmailStore} from "@/store/email.js";
 import {useSettingStore} from "@/store/setting.js";
 import emailScroll from "@/components/email-scroll/index.vue"
+import MobileAccountSelector from "@/components/mobile-account-selector/index.vue"
 import {emailList, emailDelete, emailLatest, emailRead} from "@/request/email.js";
 import {starAdd, starCancel} from "@/request/star.js";
 import {defineOptions, h, onMounted, reactive, ref, watch} from "vue";
@@ -149,6 +153,20 @@ function getEmailList(emailId, size) {
 }
 
 </script>
+<style scoped>
+.email-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.email-view :deep(.email-container) {
+  flex: 1;
+  min-height: 0;
+}
+</style>
+
 <style>
 .icon {
   cursor: pointer;

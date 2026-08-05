@@ -1,5 +1,9 @@
 <template>
   <div class="box">
+    <div class="mobile-account-bar">
+      <span class="avatar">{{ avatarLetter }}</span>
+      <span class="email">{{ currentEmail || $t('switchMailboxHint') }}</span>
+    </div>
     <div class="header-actions">
       <Icon class="icon" icon="material-symbols-light:arrow-back-ios-new" width="20" height="20" @click="handleBack"/>
       <Icon v-perm="'email:delete'" class="icon" icon="uiw:delete" width="16" height="16" @click="handleDelete"/>
@@ -76,7 +80,7 @@
 </template>
 <script setup>
 import ShadowHtml from '@/components/shadow-html/index.vue'
-import {reactive, ref, watch, onMounted, onUnmounted} from "vue";
+import {computed, reactive, ref, watch, onMounted, onUnmounted} from "vue";
 import {useRouter} from 'vue-router'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {emailDelete, emailRead} from "@/request/email.js";
@@ -102,6 +106,9 @@ const router = useRouter()
 const email = emailStore.contentData.email
 const showPreview = ref(false)
 const srcList = reactive([])
+
+const currentEmail = computed(() => accountStore.currentAccount?.email || '')
+const avatarLetter = computed(() => (currentEmail.value[0] || '?').toUpperCase())
 
 const { t } = useI18n()
 watch(() => accountStore.currentAccountId, () => {
@@ -236,6 +243,45 @@ const handleDelete = () => {
   }
   .icon {
     cursor: pointer;
+  }
+}
+
+.mobile-account-bar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  font-size: 12px;
+  @media (max-width: 1024px) {
+    display: flex;
+  }
+
+  .avatar {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--el-text-color-primary);
+    color: var(--el-bg-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+
+  .email {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--el-text-color-secondary);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 }
 

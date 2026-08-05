@@ -404,5 +404,9 @@ const zh = {
     memberCount: '成员',
     adminAddMailbox: '添加邮箱',
     adminRenameMailbox: '重命名邮箱',
+    switchMailbox: '切换邮箱',
+    switchMailboxHint: '点击切换其他邮箱',
+    noOtherMailboxes: '暂无可切换的邮箱',
+    loadMailboxesFailed: '加载邮箱列表失败',
 }
 export default zh

@@ -404,6 +404,10 @@ const en = {
     memberCount: 'Members',
     adminAddMailbox: 'Add Mailbox',
     adminRenameMailbox: 'Rename Mailbox',
+    switchMailbox: 'Switch Mailbox',
+    switchMailboxHint: 'Tap to view another mailbox',
+    noOtherMailboxes: 'No other mailboxes available',
+    loadMailboxesFailed: 'Failed to load mailboxes',
 }
 
 export default en
