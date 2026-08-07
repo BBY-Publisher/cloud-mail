@@ -3,6 +3,7 @@ import result from '../model/result';
 import settingService from '../service/setting-service';
 import userContext from "../security/user-context";
 import attachmentMigrationService from '../service/attachment-migration-service';
+import imageUrlBackfillService from '../service/image-url-backfill-service';
 
 app.put('/setting/set', async (c) => {
 	await settingService.set(c, await c.req.json());
@@ -37,4 +38,9 @@ app.put('/setting/setBlacklist', async (c) => {
 app.post('/setting/migrateAttachments', async (c) => {
 	const migration = await attachmentMigrationService.migrateBatch(c, await c.req.json());
 	return c.json(result.ok(migration));
+});
+
+app.post('/setting/backfillImageUrls', async (c) => {
+	const summary = await imageUrlBackfillService.backfillBatch(c, await c.req.json());
+	return c.json(result.ok(summary));
 });
