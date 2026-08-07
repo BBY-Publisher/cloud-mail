@@ -1,6 +1,6 @@
 import orm from '../entity/orm';
 import email from '../entity/email';
-import { attConst, emailConst, isDel, settingConst } from '../const/entity-const';
+import { emailConst, isDel, settingConst } from '../const/entity-const';
 import { and, desc, eq, gt, inArray, isNull, lt, count, asc, sql, ne, or, like, lte, gte } from 'drizzle-orm';
 import { star } from '../entity/star';
 import settingService from './setting-service';
@@ -44,6 +44,7 @@ import {
 	partitionEmailAttachments
 } from '../utils/attachment-email-utils';
 import attachmentUploadService from './attachment-upload-service';
+import { MAX_INLINE_IMAGES } from './att-service';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -425,6 +426,11 @@ const emailService = {
 
 		const cidImageDataList = imageDataList.map(item => ({...item, contentId: `<${item.contentId}>`}))
 
+		// 内嵌图片数量超过上限时，直接拒绝，避免在 email 行写入后再抛错留下孤儿行。
+		if (cidImageDataList.length > MAX_INLINE_IMAGES) {
+			throw new BizError(t('imageAttLimit'));
+		}
+
 		//把图片标签cid标签切换会通用url
 		const replacedHtml = this.imgReplace(html, cidImageDataList, r2Domain);
 
@@ -474,9 +480,6 @@ const emailService = {
 
 		//保存内嵌附件（失败时也保存，方便用户查看/重发）
 		if (cidImageDataList.length > 0) {
-			if (cidImageDataList.length > 50) {
-				throw new BizError(t('imageAttLimit'));
-			}
 			await attService.saveArticleAtt(c, cidImageDataList, userId, accountId, emailResult.emailId);
 		}
 
@@ -1000,10 +1003,6 @@ const emailService = {
 			}
 
 		}
-
-		useAtts.forEach(att => {
-			att.type = attConst.type.EMBED
-		})
 
 		return document.toString();
 	},
