@@ -784,6 +784,10 @@ function resetForm() {
   form.content = ''
   form.manyType = null
   form.includeSignature = true
+  // Intentionally reset attachments on reply/forward. Original email
+  // attachments that are not referenced by an <img> (non-inline ATT rows)
+  // are dropped — matches Gmail/Outlook reply semantics. Do not "fix"
+  // this without confirming product intent.
   form.attachments = []
   form.sendType = ''
   form.emailId = 0
