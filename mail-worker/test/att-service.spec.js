@@ -1,6 +1,22 @@
-import { describe, expect, it } from 'vitest';
-import {
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+	settingQuery: vi.fn(async () => ({ r2Domain: 'https://r2.example.com' })),
+	getObj: vi.fn(async () => null),
+	selectOneByKeys: vi.fn(async () => [])
+}));
+
+vi.mock('../src/service/setting-service', () => ({
+	default: { query: mocks.settingQuery }
+}));
+
+vi.mock('../src/service/r2-service', () => ({
+	default: { getObj: mocks.getObj }
+}));
+
+import attService, {
 	ATTACHMENT_INSERT_BATCH_SIZE,
+	MAX_INLINE_IMAGES,
 	insertAttachmentRows,
 	isUploadedAttachmentUrl,
 	toStoredAttachment
@@ -132,5 +148,110 @@ describe('isUploadedAttachmentUrl', () => {
 			'/api/oss/attachments/image.png'
 		)).toBe(true);
 		expect(isUploadedAttachmentUrl('attachments/image.png')).toBe(false);
+	});
+});
+
+describe('MAX_INLINE_IMAGES', () => {
+	it('matches the documented inline-image cap', () => {
+		expect(MAX_INLINE_IMAGES).toBe(50);
+	});
+});
+
+// 1x1 transparent PNG, base64-encoded.
+const TINY_PNG_BASE64 =
+	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+function buildHtml(sources) {
+	return sources.map(src => `<p><img src="${src}" /></p>`).join('');
+}
+
+function extractCids(html) {
+	const matches = html.match(/cid:([a-f0-9]+)/g) || [];
+	return matches.map(match => match.replace('cid:', ''));
+}
+
+describe('toImageUrlHtml', () => {
+	const c = { env: {} };
+
+	function stubR2Images(keys) {
+		// Return DB rows + R2 buffers for every requested key, so the
+		// enrichment pass assigns `image.content` and the trailing filter
+		// keeps the entries.
+		vi.spyOn(attService, 'selectOneByKeys').mockResolvedValueOnce(
+			keys.map(key => ({
+				key,
+				size: 1,
+				filename: key.split('/').pop(),
+				mimeType: 'image/png'
+			}))
+		);
+		mocks.getObj.mockImplementation(async key => new TextEncoder().encode(`bytes-for-${key}`).buffer);
+	}
+
+	beforeEach(() => {
+		mocks.settingQuery.mockClear();
+		mocks.getObj.mockClear();
+	});
+
+	it('dedupes the same R2 URL referenced in multiple <img> tags', async () => {
+		stubR2Images(['attachments/abc.png']);
+		const src = 'https://r2.example.com/attachments/abc.png';
+		const { imageDataList, html } = await attService.toImageUrlHtml(c, buildHtml([src, src, src]));
+
+		expect(imageDataList).toHaveLength(1);
+		expect(imageDataList[0].key).toBe('attachments/abc.png');
+		const cids = extractCids(html);
+		expect(cids).toHaveLength(3);
+		expect(new Set(cids).size).toBe(1);
+	});
+
+	it('strips cache-buster query strings before dedup', async () => {
+		stubR2Images(['attachments/abc.png']);
+		const srcA = 'https://r2.example.com/attachments/abc.png';
+		const srcB = 'https://r2.example.com/attachments/abc.png?v=42';
+		const { imageDataList, html } = await attService.toImageUrlHtml(c, buildHtml([srcA, srcB]));
+
+		expect(imageDataList).toHaveLength(1);
+		const cids = extractCids(html);
+		expect(cids).toHaveLength(2);
+		expect(new Set(cids).size).toBe(1);
+	});
+
+	it('dedupes the same data:image referenced in multiple <img> tags', async () => {
+		const src = `data:image/png;base64,${TINY_PNG_BASE64}`;
+		const { imageDataList, html } = await attService.toImageUrlHtml(c, buildHtml([src, src]));
+
+		expect(imageDataList).toHaveLength(1);
+		expect(imageDataList[0].mimeType).toBe('image/png');
+		// `content` is stored as raw base64 (no `data:` prefix); see base64ToDataStr.
+		expect(imageDataList[0].content).toBe(TINY_PNG_BASE64);
+		expect(imageDataList[0].buff).toBeInstanceOf(ArrayBuffer);
+		const cids = extractCids(html);
+		expect(cids).toHaveLength(2);
+		expect(new Set(cids).size).toBe(1);
+	});
+
+	it('keeps distinct R2 images distinct', async () => {
+		stubR2Images(['attachments/a.png', 'attachments/b.png']);
+		const a = 'https://r2.example.com/attachments/a.png';
+		const b = 'https://r2.example.com/attachments/b.png';
+		const { imageDataList } = await attService.toImageUrlHtml(c, buildHtml([a, b, a]));
+
+		expect(imageDataList).toHaveLength(2);
+		const keys = imageDataList.map(item => item.key).sort();
+		expect(keys).toEqual(['attachments/a.png', 'attachments/b.png']);
+	});
+
+	it('keeps R2 and data:image separate when mixed', async () => {
+		stubR2Images(['attachments/foo.png']);
+		const r2Src = 'https://r2.example.com/attachments/foo.png';
+		const dataSrc = `data:image/png;base64,${TINY_PNG_BASE64}`;
+		const { imageDataList, html } = await attService.toImageUrlHtml(c, buildHtml([r2Src, dataSrc, r2Src, dataSrc]));
+
+		expect(imageDataList).toHaveLength(2);
+		// Each unique source should produce exactly one cid reused by both tags.
+		const cids = extractCids(html);
+		expect(cids).toHaveLength(4);
+		expect(new Set(cids).size).toBe(2);
 	});
 });
