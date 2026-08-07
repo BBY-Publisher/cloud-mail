@@ -13,6 +13,10 @@ import { isUploadedAttachmentKey } from '../const/attachment-const';
 
 export const ATTACHMENT_INSERT_BATCH_SIZE = 5;
 
+// 内嵌图片上限：富引用的回复邮件常常超过 10 张，这里统一为 50。
+// 上限校验在 email-service.send() 中、email 行写入之前完成。
+export const MAX_INLINE_IMAGES = 50;
+
 export function isUploadedAttachmentUrl(src) {
 	try {
 		const url = new URL(String(src || ''), 'https://cloud-mail.invalid');
@@ -127,51 +131,63 @@ const attService = {
 
 		let imageDataList = [];
 
+		// 同源去重：相同的 R2 key / 相同的 data:image 内容只生成一个 cid，
+		// 所有引用它的 <img> 都改写为同一个 cid:。这样 provider 只会收到一份
+		// 内嵌图片，DB 的 EMBED 行也只插入一次。
+		const r2CidByKey = new Map();
+		const dataCidByHash = new Map();
+
 		for (const img of images) {
 
-			//邮件正文base64图片转cid附件
-			const src = img.getAttribute('src');
+			const rawSrc = img.getAttribute('src');
+			const src = (rawSrc || '').trim();
 			const uploadedAttachmentUrl = isUploadedAttachmentUrl(src);
+
+			//邮件正文base64图片转cid附件
 			if (src && src.startsWith('data:image')) {
 				const file = fileUtils.base64ToFile(src);
 				const buff = await file.arrayBuffer();
-				const cid = uuidv4().replace(/-/g, '');
-				const key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(buff) + fileUtils.getExtFileName(file.name);
+				const hash = await fileUtils.getBuffHash(buff);
+				let cid = dataCidByHash.get(hash);
+				if (!cid) {
+					cid = uuidv4().replace(/-/g, '');
+					dataCidByHash.set(hash, cid);
+					const key = constant.ATTACHMENT_PREFIX + hash + fileUtils.getExtFileName(file.name);
 
+					const attData = {};
+					attData.key = key;
+					attData.filename = file.name;
+					attData.mimeType = file.type;
+					attData.size = file.size;
+					attData.buff = buff;
+					attData.content = fileUtils.base64ToDataStr(src);
+					attData.contentId = cid;
+
+					imageDataList.push(attData);
+				}
 				img.setAttribute('src', 'cid:' + cid);
-
-				const attData = {};
-				attData.key = key;
-				attData.filename = file.name;
-				attData.mimeType = file.type;
-				attData.size = file.size;
-				attData.buff = buff;
-				attData.content = fileUtils.base64ToDataStr(src);
-				attData.contentId = cid;
-
-				imageDataList.push(attData);
-			}
-
-			//邮件正文站内图片转cid附件
-			if (src && !uploadedAttachmentUrl
+			} else if (src && !uploadedAttachmentUrl
 				&& (src.startsWith(domainUtils.toOssDomain(r2Domain)) || src.startsWith('attachments/'))) {
 
-				const cid = uuidv4().replace(/-/g, '')
+				// 去除 query / fragment，保证 ?v=2 这类缓存破坏参数不会破坏去重。
+				const bareSrc = src.split('?')[0].split('#')[0];
+				const r2DomainPrefix = domainUtils.toOssDomain(r2Domain) + '/';
+				const key = bareSrc.startsWith(r2DomainPrefix)
+					? bareSrc.replace(r2DomainPrefix, '')
+					: bareSrc;
+
+				let cid = r2CidByKey.get(key);
+				if (!cid) {
+					cid = uuidv4().replace(/-/g, '');
+					r2CidByKey.set(key, cid);
+
+					const attData = {};
+					attData.key = key;
+					attData.contentId = cid;
+					attData.type = attConst.type.EMBED;
+					imageDataList.push(attData);
+				}
 				img.setAttribute('src', 'cid:' + cid);
-
-				const attData = {};
-
-				if (src.startsWith(domainUtils.toOssDomain(r2Domain))) {
-					attData.key = src.replace(domainUtils.toOssDomain(r2Domain) + '/','');
-				}
-
-				if (src.startsWith('attachments/')) {
-					attData.key = src;
-				}
-
-				attData.contentId = cid;
-				attData.type = attConst.type.EMBED;
-				imageDataList.push(attData);
 
 			}
 
