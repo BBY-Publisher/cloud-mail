@@ -27,7 +27,3 @@ export function setBlackList(params) {
 export function migrateAttachments(params) {
     return http.post('/setting/migrateAttachments', params)
 }
-
-export function backfillImageUrls(params) {
-    return http.post('/setting/backfillImageUrls', params)
-}
