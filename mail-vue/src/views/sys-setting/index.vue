@@ -332,6 +332,25 @@
                   </el-button>
                 </div>
               </div>
+              <div class="setting-item">
+                <div>
+                  <span>{{ $t('backfillImageUrls') }}</span>
+                  <el-tooltip effect="dark" :content="$t('backfillImageUrlsDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
+                <div class="r2domain">
+                  <el-button v-perm="'setting:set'" class="opt-button" size="small" type="primary"
+                             :loading="imageBackfillLoading" :disabled="!setting.hasR2"
+                             @click="backfillImageUrls">
+                    {{ imageBackfillPhase === 'writing'
+                      ? $t('backfillImageUrlsWriting', { count: imageBackfillCount })
+                      : imageBackfillPhase === 'scanning'
+                        ? $t('backfillImageUrlsScanning', { count: imageBackfillCount })
+                        : $t('startBackfill') }}
+                  </el-button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -942,7 +961,7 @@
 
 <script setup>
 import {computed, defineOptions, nextTick, reactive, ref} from "vue";
-import {deleteBackground, migrateAttachments, setBackground, setBlackList, settingQuery, settingSet} from "@/request/setting.js";
+import {deleteBackground, migrateAttachments, setBackground, setBlackList, settingQuery, settingSet, backfillImageUrls as backfillImageUrlsApi} from "@/request/setting.js";
 import {useSettingStore} from "@/store/setting.js";
 import {useUiStore} from "@/store/ui.js";
 import {useUserStore} from "@/store/user.js";
@@ -994,6 +1013,9 @@ const settingLoading = ref(false)
 const clearS3Loading = ref(false)
 const attachmentMigrationLoading = ref(false)
 const attachmentMigrationCount = ref(0)
+const imageBackfillLoading = ref(false)
+const imageBackfillPhase = ref('idle') // 'idle' | 'scanning' | 'writing'
+const imageBackfillCount = ref(0)
 const r2DomainInput = ref('')
 const loginOpacity = ref(0)
 const minEmailPrefix = ref(0)
@@ -1612,6 +1634,103 @@ async function migrateKvAttachments() {
     })
   } finally {
     attachmentMigrationLoading.value = false
+  }
+}
+
+async function backfillImageUrls() {
+  try {
+    await ElMessageBox.confirm(t('backfillImageUrlsConfirm'), t('backfillImageUrls'), {
+      confirmButtonText: t('confirm'),
+      cancelButtonText: t('cancel'),
+      type: 'warning'
+    })
+  } catch (_) {
+    return
+  }
+
+  imageBackfillLoading.value = true
+  imageBackfillCount.value = 0
+  let scanned = 0
+  let rewritten = 0
+  let skipped = 0
+  let failed = []
+  let exitMessage = null
+  let exitType = 'success'
+
+  try {
+    // 第一轮：dry-run 扫描。把需要写入的行数展示给管理员，等待确认。
+    imageBackfillPhase.value = 'scanning'
+    let cursor = 0
+    let dryRunRewritten = 0
+
+    while (true) {
+      const result = await backfillImageUrlsApi({ cursor, limit: 50, commit: false })
+      scanned += result.scanned
+      dryRunRewritten += result.rewritten || 0
+      failed = failed.concat(result.failed || [])
+
+      if (result.complete || result.cursor === null) {
+        break
+      }
+      cursor = result.cursor
+    }
+
+    // 扫描发现 cid 无法解析：直接停下，避免后续 commit 把失败行也跑一遍。
+    if (failed.length > 0) {
+      const first = failed[0]
+      const refs = Array.isArray(first.refs) ? first.refs.join(', ') : (first.ref || '')
+      throw new Error(
+        refs
+          ? t('backfillImageUrlsFailedRefs', { message: '', emailId: first.emailId, refs })
+          : t('backfillImageUrlsFailed', { message: `email_id ${first.emailId}` })
+      )
+    }
+
+    if (dryRunRewritten === 0) {
+      exitMessage = t('backfillImageUrlsSuccess', { scanned, rewritten: 0, skipped, failed: 0 })
+      return
+    }
+
+    // 第二轮：commit 写入。
+    imageBackfillPhase.value = 'writing'
+    cursor = 0
+    while (true) {
+      const result = await backfillImageUrlsApi({ cursor, limit: 50, commit: true })
+      rewritten += result.rewritten
+      skipped += result.skipped
+      imageBackfillCount.value += result.rewritten
+
+      if (result.failed && result.failed.length > 0) {
+        const first = result.failed[0]
+        const refs = Array.isArray(first.refs) ? first.refs.join(', ') : (first.ref || '')
+        throw new Error(
+          refs
+            ? t('backfillImageUrlsFailedRefs', { message: '', emailId: first.emailId, refs })
+            : t('backfillImageUrlsFailed', { message: `email_id ${first.emailId}` })
+        )
+      }
+
+      if (result.complete || result.cursor === null) {
+        break
+      }
+      cursor = result.cursor
+    }
+
+    exitMessage = t('backfillImageUrlsSuccess', {
+      scanned,
+      rewritten,
+      skipped,
+      failed: 0
+    })
+  } catch (error) {
+    exitMessage = t('backfillImageUrlsFailed', { message: error.message || String(error) })
+    exitType = 'error'
+  } finally {
+    if (exitMessage) {
+      ElMessage({ message: exitMessage, type: exitType, plain: true })
+    }
+    imageBackfillLoading.value = false
+    imageBackfillPhase.value = 'idle'
   }
 }
 
