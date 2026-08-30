@@ -844,7 +844,7 @@ function openForward(email) {
           Subject: ${forwardSubject}<br>
           ${forwardTo ? `To: ${forwardTo}<br>` : ''}
       </div>
-      <blockquote class="mceNonEditable cmq-reply-quote" style="margin: 0 0 0 0.8ex;border-left: 1px solid rgb(204,204,204);padding-left: 1ex;">
+      <blockquote class="cmq-reply-quote" style="margin: 0 0 0 0.8ex;border-left: 1px solid rgb(204,204,204);padding-left: 1ex;">
         <article>
             ${body}
         </article>
@@ -885,7 +885,7 @@ function openReply(email) {
     <br>
         ${formatDetailDate(email.createTime)} ${email.name} &lt${email.sendEmail}&gt ${t('wrote')}:
     </div>
-    <blockquote class="mceNonEditable cmq-reply-quote" style="margin: 0 0 0 0.8ex;border-left: 1px solid rgb(204,204,204);padding-left: 1ex;">
+    <blockquote class="cmq-reply-quote" style="margin: 0 0 0 0.8ex;border-left: 1px solid rgb(204,204,204);padding-left: 1ex;">
       <article>
           ${formatImage(email.content) || `<pre style="font-family: inherit;word-break: break-word;white-space: pre-wrap;margin: 0">${email.text}</pre>`}
       </article>
