@@ -1,4 +1,11 @@
 const zh = {
+    repairBrevoTimeStart: '发送开始日期',
+    repairBrevoTimeEnd: '发送结束日期',
+    repairBrevoTime: '校正 Brevo 发送时间',
+    repairBrevoTimeDesc: '逐批核对已有 Brevo 邮件，仅更新发送时间。请选择在 Brevo 中的发送日期范围（最多 30 天）；留空查询最近 30 天。找不到发送记录的邮件保留原值，可换日期范围重试。',
+    repairBrevoTimeResult: '已检查 {processed} 封，校正 {updated} 封，失败 {failed} 封',
+    repairBrevoTimeRetry: '请求未完成，请检查日期范围或网络后重试。重复校正不会创建邮件。',
+    repairBrevoTimeStop: '本批完成后停止',
   write: '写邮件',
   email: '邮箱',
   loading: '加载中...',

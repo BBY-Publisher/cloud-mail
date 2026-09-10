@@ -72,7 +72,7 @@ export interface EmailScrollHandle {
 }
 
 export interface EmailScrollProps {
-  getEmailList: (emailId: number, size: number) => Promise<EmailListResp>;
+  getEmailList: (emailId: number, size: number, cursorTime?: string | number) => Promise<EmailListResp>;
   emailDelete: (emailIds: number[]) => Promise<any>;
   emailRead?: (emailIds: number[]) => Promise<any>;
   starAdd?: (emailId: number) => Promise<any>;
@@ -244,7 +244,7 @@ const EmailScroll = forwardRef<EmailScrollHandle, EmailScrollProps>(function Ema
       setLoading(true);
       try {
         const start = Date.now();
-        const data = await getEmailList(lastId, SIZE);
+        const data = await getEmailList(lastId, SIZE, lastId ? (emailList[emailList.length - 1].createTime ?? '') : undefined);
         const elapsed = Date.now() - start;
         if (elapsed < 300 && !lastId) await sleep(300 - elapsed);
         setFirstLoad(false);
@@ -387,6 +387,13 @@ const EmailScroll = forwardRef<EmailScrollHandle, EmailScrollProps>(function Ema
     }
   }
 
+  function emailTime(value?: string | number): number {
+    if (!value) return 0;
+    const iso = typeof value === 'string' && !/([zZ]|[+-]\d{2}:\d{2})$/.test(value)
+      ? value.replace(' ', 'T') + 'Z' : value;
+    return new Date(iso).getTime() || 0;
+  }
+
   function addItem(email: any): boolean {
     setEmailList((prev) => {
       if (prev.some((e) => e.emailId === email.emailId)) return prev;
@@ -396,11 +403,11 @@ const EmailScroll = forwardRef<EmailScrollHandle, EmailScrollProps>(function Ema
         setLatestEmail(email);
       }
       setTotal((n) => n + 1);
-      if (timeSort) {
-        if (noMoreData) return [...prev, decorated];
-        return [decorated, ...prev];
-      }
-      const idx = prev.findIndex((e) => e.emailId < email.emailId);
+      const idx = prev.findIndex((e) => {
+        const timeDifference = ['email', 'send', 'all-email'].includes(type) ? emailTime(email.createTime) - emailTime(e.createTime) : 0;
+        const difference = timeDifference || email.emailId - e.emailId;
+        return timeSort ? difference < 0 : difference > 0;
+      });
       if (idx !== -1) {
         const next = [...prev];
         next.splice(idx, 0, decorated);

@@ -151,9 +151,9 @@ export default function EmailView() {
     });
   }
 
-  async function getEmailList(emailId: number, size: number) {
+  async function getEmailList(emailId: number, size: number, cursorTime?: string | number) {
     const allReceive = account.currentAccount?.allReceive ?? 0;
-    const data = await emailList(accountId, allReceive, emailId, timeSortRef.current, size, 0);
+    const data = await emailList(accountId, allReceive, emailId, timeSortRef.current, size, 0, cursorTime);
     if (data.latestEmail) {
       data.latestEmail.reqAccountId = accountId;
       data.latestEmail.allReceive = allReceive;

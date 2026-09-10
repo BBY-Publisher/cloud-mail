@@ -44,8 +44,16 @@ const dbInit = {
 		await this.v3_6DB(c);
 		await this.v3_7DB(c);
 		await this.v3_8DB(c);
+		await this.v3_9DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_9DB(c) {
+		await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_time_id
+			ON email(coalesce(julianday(create_time), 0), email_id)`).run();
+		await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_account_type_time_id
+			ON email(account_id, type, coalesce(julianday(create_time), 0), email_id)`).run();
 	},
 
 	async v3_8DB(c) {

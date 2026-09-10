@@ -1,5 +1,12 @@
 import http, { unwrap } from './http';
 
+export function repairBrevoTime(params: { afterEmailId: number; startDate: string; endDate: string }): Promise<{
+  processed: number; updated: number; skipped: number; errors: { emailId: number; message: string }[];
+  nextEmailId: number; hasMore: boolean;
+}> {
+  return unwrap(http.post('/allEmail/repairBrevoTime', params, { noMsg: true, timeout: 120000 }));
+}
+
 export function allEmailList(params: Record<string, unknown>): Promise<{ list: any[]; total: number; latestEmail: any }> {
   return unwrap(
     http.get('/allEmail/list', {

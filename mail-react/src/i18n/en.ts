@@ -1,4 +1,11 @@
 const en: Record<string, string> = {
+    repairBrevoTimeStart: 'Send date from',
+    repairBrevoTimeEnd: 'Send date through',
+    repairBrevoTime: 'Correct Brevo send times',
+    repairBrevoTimeDesc: 'Check existing Brevo emails in batches and update only their send times. Select the send-date range in Brevo (up to 30 days), or leave empty for the last 30 days. Emails without a matching send record keep their original time; retry with another date range.',
+    repairBrevoTimeResult: 'Checked {processed}, corrected {updated}, failed {failed}',
+    repairBrevoTimeRetry: 'The request did not complete. Check the date range or connection and retry. Repeating this operation does not create emails.',
+    repairBrevoTimeStop: 'Stop after this batch',
     write: 'Compose',
     email: 'Email',
     loading: 'Loading...',

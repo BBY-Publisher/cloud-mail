@@ -1,4 +1,5 @@
 import emailService from './email-service';
+import { brevoDateRange, parseBrevoDate, resolveBrevoSentTime } from '../utils/brevo-time-utils';
 import { emailConst } from '../const/entity-const';
 import BizError from '../error/biz-error';
 import accountService from './account-service';
@@ -226,7 +227,7 @@ const brevoService = {
 		return emailService.insertFromProvider(c, 'brevo', messageId, emailRow);
 	},
 
-	async retrieveEmail(c, messageId, recipient, existingClient) {
+	async retrieveEmail(c, messageId, recipient, existingClient, dateRange = {}, requireBody = true) {
 		const apiKey = c.env.brevo_api_key;
 
 		if (!apiKey) {
@@ -243,6 +244,7 @@ const brevoService = {
 			});
 			const listResponse = await client.transactionalEmails.getTransacEmailsList({
 				messageId: toBrevoApiMessageId(normalizedMessageId),
+				...dateRange,
 				limit: 100,
 				sort: 'desc'
 			});
@@ -252,7 +254,7 @@ const brevoService = {
 			const matchingIdRows = list.filter(item => candidates.includes(String(item?.messageId || '').trim()));
 			const listItem = matchingIdRows.find(item => (
 				!normalizedRecipient || String(item?.email || '').trim().toLowerCase() === normalizedRecipient
-			)) || matchingIdRows[0] || list[0];
+			));
 			logBrevoSync('email-list.response', {
 				messageId: normalizedMessageId,
 				resultCount: list.length,
@@ -268,14 +270,22 @@ const brevoService = {
 				messageId: normalizedMessageId,
 				uuid: listItem.uuid
 			});
-			const response = await client.transactionalEmails.getTransacEmailContent({ uuid: listItem.uuid });
+			let response;
+			try {
+				response = await client.transactionalEmails.getTransacEmailContent({ uuid: listItem.uuid });
+			} catch (error) {
+				// Historical content may have expired while list metadata remains.
+				// Time-only repair can still use that email's verified send date.
+				if (requireBody || parseBrevoDate(listItem.date) === null) throw error;
+				return { listItem, content: {} };
+			}
 			logBrevoSync('email-detail.response', {
 				messageId: normalizedMessageId,
 				uuid: listItem.uuid,
 				eventCount: Array.isArray(response?.events) ? response.events.length : 0,
 				hasBody: Boolean(response?.body)
 			});
-			if (!response?.body) {
+			if (!response || (requireBody && !response.body)) {
 				throw new BizError('Brevo 邮件详情为空');
 			}
 			return {
@@ -463,6 +473,34 @@ const brevoService = {
 		return { configured: true, inserted, updated, skipped, errors };
 	},
 
+	async repairSentTimes(c, params = {}) {
+		if (!c.env.brevo_api_key) throw new BizError('BREVO_API_KEY is not configured', 400);
+		if (!params || typeof params !== 'object' || Array.isArray(params)) throw new BizError('Invalid repair parameters', 400);
+		const dateRange = brevoDateRange(params);
+		const afterEmailId = Number(params.afterEmailId || 0);
+		if (!Number.isSafeInteger(afterEmailId) || afterEmailId < 0) throw new BizError('Invalid repair cursor', 400);
+		const batchSize = 10;
+		const rows = await emailService.listBrevoTimeRepairBatch(c, afterEmailId, batchSize + 1);
+		const batch = rows.slice(0, batchSize);
+		const client = new BrevoClient({ apiKey: c.env.brevo_api_key });
+		const result = { processed: 0, updated: 0, skipped: 0, errors: [],
+			nextEmailId: afterEmailId, hasMore: rows.length > batchSize };
+		for (const row of batch) {
+			try {
+				if (!row.resendEmailId) throw new BizError('Brevo message ID is missing');
+				const detail = await this.retrieveEmail(c, row.resendEmailId, row.toEmail, client, dateRange, false);
+				const changed = await emailService.repairBrevoEmailTime(c, row, resolveBrevoSentTime(detail));
+				if (changed) result.updated++;
+				else result.skipped++;
+			} catch (error) {
+				result.errors.push({ emailId: row.emailId, message: error?.message || String(error) });
+			}
+			result.processed++;
+			result.nextEmailId = row.emailId;
+		}
+		return result;
+	},
+
 	async toEmailRow(c, body, detail) {
 		const listItem = detail?.listItem || {};
 		const content = detail?.content || detail || {};
@@ -495,7 +533,7 @@ const brevoService = {
 			bcc: '[]',
 			message: buildBrevoStatusParams(body).message || null,
 			provider: 'brevo',
-			createTime: content.date || listItem.date || body.date || body.created_at
+			createTime: resolveBrevoSentTime(detail)
 		};
 	}
 };

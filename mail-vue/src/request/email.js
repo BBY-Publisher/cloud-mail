@@ -2,8 +2,8 @@ import http from '@/axios/index.js';
 import axios from 'axios';
 import {uploadFileDirectlyToR2} from '@/utils/direct-r2-upload.js';
 
-export function emailList(accountId, allReceive, emailId, timeSort, size, type, keyword = '') {
-    return http.get('/email/list', {params: {accountId, allReceive, emailId, timeSort, size, type, keyword}})
+export function emailList(accountId, allReceive, emailId, timeSort, size, type, keyword = '', cursorTime) {
+    return http.get('/email/list', {params: {accountId, allReceive, emailId, timeSort, size, type, keyword, cursorTime}})
 }
 
 export function emailDelete(emailIds) {

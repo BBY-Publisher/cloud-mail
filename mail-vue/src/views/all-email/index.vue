@@ -60,9 +60,27 @@
           <Icon class="icon" :class="{'icon-loading': syncing}" @click="onSync"
                 icon="material-symbols-light:sync" width="28" height="28"/>
         </el-tooltip>
+        <el-tooltip :content="$t('repairBrevoTime')" placement="bottom" v-if="isSuperAdmin">
+          <Icon class="icon" @click="repairShow = true" icon="material-symbols-light:history" width="28" height="28"/>
+        </el-tooltip>
         <Icon class="icon clear" icon="fluent:broom-sparkle-16-regular" width="22" height="22" @click="openBathDelete"/>
       </template>
     </emailScroll>
+    <el-dialog v-model="repairShow" :title="$t('repairBrevoTime')" width="min(440px, 95vw)"
+               :close-on-click-modal="!repairRunning" :close-on-press-escape="!repairRunning" :show-close="!repairRunning">
+      <p>{{ t('repairBrevoTimeDesc') }}</p>
+      <el-date-picker v-model="repairRange" type="daterange" value-format="YYYY-MM-DD"
+                      :disabled="repairRunning" :start-placeholder="t('repairBrevoTimeStart')" :end-placeholder="t('repairBrevoTimeEnd')" :range-separator="t('to')" style="width: 100%"/>
+      <p>{{ t('repairBrevoTimeResult', repairResult) }}</p>
+      <p v-if="repairRequestFailed">{{ t('repairBrevoTimeRetry') }}</p>
+      <div v-if="repairErrors.length" style="max-height: 140px; overflow: auto">
+        <div v-for="error in repairErrors" :key="error.emailId">#{{ error.emailId }}: {{ error.message }}</div>
+      </div>
+      <template #footer>
+        <el-button v-if="repairRunning" @click="repairStop = true">{{ t('repairBrevoTimeStop') }}</el-button>
+        <el-button v-else type="primary" :disabled="syncing" @click="onRepairTime">{{ t('repairBrevoTime') }}</el-button>
+      </template>
+    </el-dialog>
     <el-dialog v-model="showBathDelete" :title="$t('clearEmail')" width="335"
                @closed="closedClear">
       <div class="clear-email">
@@ -94,14 +112,15 @@
 <script setup>
 import {starAdd, starCancel} from "@/request/star.js";
 import emailScroll from "@/components/email-scroll/index.vue"
-import {computed, defineOptions, reactive, ref, watch, onMounted} from "vue";
+import {computed, defineOptions, reactive, ref, watch, onMounted, onBeforeUnmount} from "vue";
 import {useEmailStore} from "@/store/email.js";
 import {
   allEmailList,
   allEmailDelete,
   allEmailBatchDelete,
   allEmailLatest,
-  allEmailSync
+  allEmailSync,
+  repairBrevoTime
 } from "@/request/all-email.js";
 import {Icon} from "@iconify/vue";
 import router from "@/router/index.js";
@@ -130,6 +149,14 @@ const mySelect = ref()
 const showBathDelete = ref(false)
 const clearLoading = ref(false)
 const syncing = ref(false)
+const repairShow = ref(false)
+const repairRunning = ref(false)
+const repairStop = ref(false)
+const repairRange = ref([])
+const repairResult = reactive({processed: 0, updated: 0, failed: 0})
+const repairErrors = ref([])
+const repairRequestFailed = ref(false)
+onBeforeUnmount(() => { repairStop.value = true; });
 const isSuperAdmin = computed(() => userStore.user?.permKeys?.includes('*') === true)
 
 onMounted(() => {
@@ -299,7 +326,7 @@ function jumpContent(email) {
 }
 
 async function onSync() {
-  if (syncing.value) return;
+  if (syncing.value || repairRunning.value) return;
 
   try {
     await ElMessageBox.confirm(t('syncConfirm'), t('sync'), {
@@ -346,9 +373,37 @@ async function onSync() {
   }
 }
 
+async function onRepairTime() {
+  if (repairRunning.value || syncing.value) return;
+  repairRunning.value = true;
+  repairStop.value = false;
+  repairRequestFailed.value = false;
+  repairErrors.value = [];
+  Object.assign(repairResult, {processed: 0, updated: 0, failed: 0});
+  const [startDate, endDate] = repairRange.value || [];
+  let afterEmailId = 0;
+  try {
+    let hasMore = true;
+    while (hasMore && !repairStop.value) {
+      const batch = await repairBrevoTime({afterEmailId, startDate, endDate});
+      repairResult.processed += batch.processed;
+      repairResult.updated += batch.updated;
+      repairResult.failed += batch.errors.length;
+      repairErrors.value.push(...batch.errors);
+      afterEmailId = batch.nextEmailId;
+      hasMore = batch.hasMore;
+    }
+  } catch (_) {
+    repairRequestFailed.value = true;
+  } finally {
+    repairRunning.value = false;
+    sysEmailScroll.value.refreshList();
+  }
+}
 
-function getEmailList(emailId, size) {
-  return allEmailList({emailId, size, ...params})
+
+function getEmailList(emailId, size, cursorTime) {
+  return allEmailList({emailId, size, cursorTime, ...params})
 }
 
 async function latest() {

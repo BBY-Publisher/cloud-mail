@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import BrevoTimeRepair from '@/components/brevo-time-repair';
 import { useNavigate } from 'react-router-dom';
 import EmailScroll, { type EmailScrollHandle } from '@/components/email-scroll';
 import { useEmailStore } from '@/store/email';
@@ -22,8 +23,8 @@ export default function AllEmailView() {
     navigate('/message');
   }
 
-  async function getEmailList(emailId: number, size: number) {
-    return allEmailList({ emailId, size });
+  async function getEmailList(emailId: number, size: number, cursorTime?: string | number) {
+    return allEmailList({ emailId, size, cursorTime });
   }
 
   async function emailDelete(emailIds: number[]) {
@@ -33,6 +34,7 @@ export default function AllEmailView() {
   return (
     <EmailScroll
       ref={scrollRef}
+      headerFirstSlot={<BrevoTimeRepair onComplete={() => scrollRef.current?.refreshList()} />}
       getEmailList={getEmailList}
       emailDelete={emailDelete}
       showUserInfo

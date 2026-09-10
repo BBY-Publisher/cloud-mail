@@ -733,6 +733,15 @@ function deleteEmail(emailIds) {
   }
 }
 
+function emailTime(email) {
+  const value = email.createTime;
+  if (!value) return 0;
+  // SQLite dates are UTC; ISO dates already include their offset.
+  const iso = typeof value === 'string' && !/([zZ]|[+-]\d{2}:\d{2})$/.test(value)
+    ? value.replace(' ', 'T') + 'Z' : value;
+  return new Date(iso).getTime() || 0;
+}
+
 function addItem(email) {
 
   const existIndex = emailList.findIndex(item => item.emailId === email.emailId)
@@ -742,24 +751,13 @@ function addItem(email) {
   }
 
   email.formatText = htmlToText(email);
-  email.formatCreateTime = fromNow(email.formatCreateTime);
+  email.formatCreateTime = fromNow(email.createTime);
 
-  if (props.timeSort) {
-    if (noLoading.value) {
-      handleList([email]);
-      emailList.push(email);
-    }
-
-    if (email.emailId > latestEmail.value?.emailId) {
-      latestEmail.value = email
-    }
-
-    total.value++
-    return true;
-  }
-
-
-  const index = emailList.findIndex(item => item.emailId < email.emailId)
+  const index = emailList.findIndex(item => {
+    const timeDifference = ['email', 'send', 'all-email'].includes(props.type) ? emailTime(email) - emailTime(item) : 0;
+    const difference = timeDifference || email.emailId - item.emailId;
+    return props.timeSort ? difference < 0 : difference > 0;
+  })
 
   if (index !== -1) {
     handleList([email]);
@@ -846,7 +844,7 @@ function getEmailList(refresh = false) {
   }
   let start = Date.now();
 
-  props.getEmailList(emailId, queryParam.size).then(async data => {
+  props.getEmailList(emailId, queryParam.size, emailId ? (emailList.at(-1).createTime ?? '') : undefined).then(async data => {
     let end = Date.now();
     let duration = end - start;
     if (duration < 300 && !emailId) {

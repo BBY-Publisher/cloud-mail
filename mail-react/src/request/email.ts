@@ -13,10 +13,11 @@ export function emailList(
   timeSort: number,
   size: number,
   type: number,
+  cursorTime?: string | number,
 ): Promise<EmailListResp> {
   return unwrap(
     http.get('/email/list', {
-      params: { accountId, allReceive, emailId, timeSort, size, type },
+      params: { accountId, allReceive, emailId, timeSort, size, type, cursorTime },
     }),
   );
 }

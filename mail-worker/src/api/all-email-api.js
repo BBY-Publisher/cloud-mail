@@ -5,6 +5,7 @@ import BizError from '../error/biz-error';
 import { t } from '../i18n/i18n';
 import providerSyncService from '../service/provider-sync-service';
 import superAdminService from '../service/super-admin-service';
+import brevoService from '../service/brevo-service';
 
 app.get('/allEmail/list', async (c) => {
 	const data = await emailService.allList(c, c.req.query());
@@ -41,4 +42,9 @@ app.get('/allEmail/latest', async (c) => {
 app.post('/allEmail/sync', async (c) => {
 	await superAdminService.require(c);
 	return c.json(result.ok(await providerSyncService.sync(c)));
+});
+
+app.post('/allEmail/repairBrevoTime', async (c) => {
+	await superAdminService.require(c);
+	return c.json(result.ok(await brevoService.repairSentTimes(c, await c.req.json())));
 });

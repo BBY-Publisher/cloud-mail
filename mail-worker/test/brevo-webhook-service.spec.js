@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
 	selectByEmailIncludeDel: vi.fn(),
 	selectByProviderEmailId: vi.fn(),
 	insertFromProvider: vi.fn(),
+	listBrevoTimeRepairBatch: vi.fn(),
+	repairBrevoEmailTime: vi.fn(),
 	updateProviderEmailStatus: vi.fn(),
 	claimDelivery: vi.fn(),
 	completeDelivery: vi.fn(),
@@ -40,6 +42,8 @@ vi.mock('../src/service/email-service', () => ({
 	default: {
 		selectByProviderEmailId: mocks.selectByProviderEmailId,
 		insertFromProvider: mocks.insertFromProvider,
+		listBrevoTimeRepairBatch: mocks.listBrevoTimeRepairBatch,
+		repairBrevoEmailTime: mocks.repairBrevoEmailTime,
 		updateProviderEmailStatus: mocks.updateProviderEmailStatus
 	}
 }));
@@ -88,6 +92,8 @@ describe('Brevo webhook contract', () => {
 		});
 		mocks.selectByProviderEmailId.mockReset();
 		mocks.insertFromProvider.mockReset();
+		mocks.listBrevoTimeRepairBatch.mockReset();
+		mocks.repairBrevoEmailTime.mockReset();
 		mocks.updateProviderEmailStatus.mockReset();
 		mocks.claimDelivery.mockReset();
 		mocks.completeDelivery.mockReset();
@@ -196,25 +202,21 @@ describe('Brevo webhook contract', () => {
 
 	it('resolves message ID to UUID before retrieving content', async () => {
 		mocks.getTransacEmailsList.mockResolvedValue({
-			data: {
-				transactionalEmails: [{
-					messageId: '<abc@relay.example>',
-					uuid: 'brevo-uuid',
-					email: 'recipient@example.com',
-					from: 'Sender <sender@example.com>',
-					subject: 'Subject',
-					date: '2026-07-17T08:00:00Z'
-				}]
-			}
+			transactionalEmails: [{
+				messageId: '<abc@relay.example>',
+				uuid: 'brevo-uuid',
+				email: 'recipient@example.com',
+				from: 'Sender <sender@example.com>',
+				subject: 'Subject',
+				date: '2026-07-17T08:00:00Z'
+			}]
 		});
 		mocks.getTransacEmailContent.mockResolvedValue({
-			data: {
-				email: 'recipient@example.com',
-				subject: 'Subject',
-				body: '<p>Hello</p>',
-				date: '2026-07-17T08:00:00Z',
-				events: []
-			}
+			email: 'recipient@example.com',
+			subject: 'Subject',
+			body: '<p>Hello</p>',
+			date: '2026-07-17T08:00:00Z',
+			events: []
 		});
 
 		const detail = await brevoService.retrieveEmail(
@@ -273,7 +275,8 @@ describe('Brevo webhook contract', () => {
 			accountId: 10,
 			userId: 20,
 			status: emailConst.status.DELIVERED,
-			provider: 'brevo'
+			provider: 'brevo',
+			createTime: '2026-07-17 08:00:00.000'
 		});
 	});
 
@@ -287,24 +290,20 @@ describe('Brevo webhook contract', () => {
 		});
 		mocks.insertFromProvider.mockResolvedValue({ emailId: 99 });
 		mocks.getTransacEmailsList.mockResolvedValue({
-			data: {
-				transactionalEmails: [{
-					messageId: '<abc@relay.example>',
-					uuid: 'brevo-uuid',
-					email: 'recipient@example.com',
-					from: 'Sender <sender@example.com>',
-					subject: 'Subject',
-					date: '2026-07-17T08:00:00Z'
-				}]
-			}
+			transactionalEmails: [{
+				messageId: '<abc@relay.example>',
+				uuid: 'brevo-uuid',
+				email: 'recipient@example.com',
+				from: 'Sender <sender@example.com>',
+				subject: 'Subject',
+				date: '2026-07-17T08:00:00Z'
+			}]
 		});
 		mocks.getTransacEmailContent.mockResolvedValue({
-			data: {
-				email: 'recipient@example.com',
-				subject: 'Subject',
-				body: '<p>Hello</p>',
-				date: '2026-07-17T08:00:00Z'
-			}
+			email: 'recipient@example.com',
+			subject: 'Subject',
+			body: '<p>Hello</p>',
+			date: '2026-07-17T08:00:00Z'
 		});
 
 		await brevoService.webhooks(
@@ -348,21 +347,19 @@ describe('Brevo webhook contract', () => {
 
 	it('discovers recent Brevo events and skips message IDs already in the system', async () => {
 		mocks.getEmailEventReport.mockResolvedValue({
-			data: {
-				events: [{
-					messageId: '<abc@relay.example>',
-					email: 'recipient@example.com',
-					from: 'Sender <sender@example.com>',
-					event: 'delivered',
-					date: '2026-07-18T08:00:00Z'
-				}, {
-					messageId: '<abc@relay.example>',
-					email: 'recipient@example.com',
-					from: 'Sender <sender@example.com>',
-					event: 'opened',
-					date: '2026-07-18T08:05:00Z'
-				}]
-			}
+			events: [{
+				messageId: '<abc@relay.example>',
+				email: 'recipient@example.com',
+				from: 'Sender <sender@example.com>',
+				event: 'delivered',
+				date: '2026-07-18T08:00:00Z'
+			}, {
+				messageId: '<abc@relay.example>',
+				email: 'recipient@example.com',
+				from: 'Sender <sender@example.com>',
+				event: 'opened',
+				date: '2026-07-18T08:05:00Z'
+			}]
 		});
 		mocks.selectByProviderEmailId.mockResolvedValue({
 			emailId: 99,
@@ -400,40 +397,34 @@ describe('Brevo webhook contract', () => {
 
 	it('resolves an unknown event message ID to UUID and imports its detail', async () => {
 		mocks.getEmailEventReport.mockResolvedValue({
-			data: {
-				events: [{
-					messageId: '<missing@relay.example>',
-					email: 'recipient@example.com',
-					from: 'External <external@example.net>',
-					event: 'delivered',
-					subject: 'Missing message',
-					date: '2026-07-18T08:00:00Z'
-				}]
-			}
+			events: [{
+				messageId: '<missing@relay.example>',
+				email: 'recipient@example.com',
+				from: 'External <external@example.net>',
+				event: 'delivered',
+				subject: 'Missing message',
+				date: '2026-07-18T08:00:00Z'
+			}]
 		});
 		mocks.getTransacEmailsList.mockResolvedValue({
-			data: {
-				count: 1,
-				transactionalEmails: [{
-					messageId: '<missing@relay.example>',
-					uuid: 'missing-uuid',
-					email: 'recipient@example.com',
-					subject: 'Missing message',
-					date: '2026-07-18T08:00:00Z'
-				}]
-			}
-		});
-		mocks.getTransacEmailContent.mockResolvedValue({
-			data: {
+			count: 1,
+			transactionalEmails: [{
+				messageId: '<missing@relay.example>',
+				uuid: 'missing-uuid',
 				email: 'recipient@example.com',
 				subject: 'Missing message',
-				body: '<p>Recovered</p>',
-				date: '2026-07-18T08:00:00Z',
-				events: [{
-					name: 'delivered',
-					time: '2026-07-18T08:00:10Z'
-				}]
-			}
+				date: '2026-07-18T08:00:00Z'
+			}]
+		});
+		mocks.getTransacEmailContent.mockResolvedValue({
+			email: 'recipient@example.com',
+			subject: 'Missing message',
+			body: '<p>Recovered</p>',
+			date: '2026-07-18T08:00:00Z',
+			events: [{
+				name: 'delivered',
+				time: '2026-07-18T08:00:10Z'
+			}]
 		});
 		mocks.selectByProviderEmailId.mockResolvedValue(null);
 		mocks.insertFromProvider.mockResolvedValue({ emailId: 101 });
@@ -478,34 +469,29 @@ describe('Brevo webhook contract', () => {
 
 	it('emits structured sync diagnostics without logging secrets or email content', async () => {
 		mocks.getEmailEventReport.mockResolvedValue({
-			data: {
-				events: [{
-					messageId: '<diagnostic@relay.example>',
-					email: 'private-recipient@example.com',
-					from: 'Private Sender <private-sender@example.net>',
-					event: 'delivered',
-					subject: 'Private subject'
-				}]
-			}
+			events: [{
+				messageId: '<diagnostic@relay.example>',
+				email: 'private-recipient@example.com',
+				from: 'Private Sender <private-sender@example.net>',
+				event: 'delivered',
+				subject: 'Private subject'
+			}]
 		});
 		mocks.getTransacEmailsList.mockResolvedValue({
-			data: {
-				count: 1,
-				transactionalEmails: [{
-					messageId: '<diagnostic@relay.example>',
-					uuid: 'diagnostic-uuid',
-					email: 'private-recipient@example.com',
-					subject: 'Private subject'
-				}]
-			}
+			count: 1,
+			transactionalEmails: [{
+				messageId: '<diagnostic@relay.example>',
+				uuid: 'diagnostic-uuid',
+				email: 'private-recipient@example.com',
+				subject: 'Private subject'
+			}]
 		});
 		mocks.getTransacEmailContent.mockResolvedValue({
-			data: {
-				email: 'private-recipient@example.com',
-				subject: 'Private subject',
-				body: '<p>Private body</p>',
-				events: []
-			}
+			email: 'private-recipient@example.com',
+			subject: 'Private subject',
+			body: '<p>Private body</p>',
+			date: '2026-07-17T08:00:00Z',
+			events: []
 		});
 		mocks.selectByProviderEmailId.mockResolvedValue(null);
 		mocks.insertFromProvider.mockResolvedValue({ emailId: 202 });
@@ -552,16 +538,14 @@ describe('Brevo webhook contract', () => {
 
 	it('reports an event without a message ID and continues processing later events', async () => {
 		mocks.getEmailEventReport.mockResolvedValue({
-			data: {
-				events: [{
-					email: 'missing-id@example.com',
-					event: 'delivered'
-				}, {
-					messageId: '<existing@relay.example>',
-					email: 'recipient@example.com',
-					event: 'delivered'
-				}]
-			}
+			events: [{
+				email: 'missing-id@example.com',
+				event: 'delivered'
+			}, {
+				messageId: '<existing@relay.example>',
+				email: 'recipient@example.com',
+				event: 'delivered'
+			}]
 		});
 		mocks.selectByProviderEmailId.mockResolvedValue({
 			emailId: 99,
@@ -589,8 +573,8 @@ describe('Brevo webhook contract', () => {
 			event: 'delivered'
 		}));
 		mocks.getEmailEventReport
-			.mockResolvedValueOnce({ data: { events: duplicateEvents } })
-			.mockResolvedValueOnce({ data: { events: [] } });
+			.mockResolvedValueOnce({ events: duplicateEvents })
+			.mockResolvedValueOnce({ events: [] });
 		mocks.selectByProviderEmailId.mockResolvedValue({
 			emailId: 99,
 			status: emailConst.status.SENT
@@ -646,4 +630,61 @@ describe('Brevo webhook contract', () => {
 			errors: []
 		});
 	});
+	it('repairs a bounded batch of existing emails without requiring retained content', async () => {
+		const rows = Array.from({ length: 11 }, (_, i) => ({ emailId: i + 1, resendEmailId: `id-${i}`, toEmail: 'recipient@example.com' }));
+		mocks.listBrevoTimeRepairBatch.mockResolvedValue(rows);
+		const retrieve = vi.spyOn(brevoService, 'retrieveEmail').mockResolvedValue({ content: { date: '2020-01-03T08:00:00Z' } });
+		mocks.repairBrevoEmailTime.mockResolvedValue(true);
+		const c = { env: { brevo_api_key: 'test' } };
+		const result = await brevoService.repairSentTimes(c, { startDate: '2020-01-01', endDate: '2020-01-30' });
+		expect(result).toEqual({ processed: 10, updated: 10, skipped: 0, errors: [], nextEmailId: 10, hasMore: true });
+		expect(retrieve).toHaveBeenCalledWith(c, 'id-0', 'recipient@example.com', expect.anything(), { startDate: '2020-01-01', endDate: '2020-01-30' }, false);
+		expect(mocks.repairBrevoEmailTime).toHaveBeenCalledWith(c, rows[0], '2020-01-03 08:00:00.000');
+		expect(mocks.insertFromProvider).not.toHaveBeenCalled();
+		expect(mocks.updateProviderEmailStatus).not.toHaveBeenCalled();
+	});
+
+	it('reports unavailable send times while continuing the repair batch', async () => {
+		mocks.listBrevoTimeRepairBatch.mockResolvedValue([
+			{ emailId: 11, resendEmailId: 'missing' }, { emailId: 12, resendEmailId: 'known' }
+		]);
+		vi.spyOn(brevoService, 'retrieveEmail').mockResolvedValueOnce({ content: {} })
+			.mockResolvedValueOnce({ content: { date: '2026-07-17T08:00:00Z' } });
+		mocks.repairBrevoEmailTime.mockResolvedValue(false);
+		const result = await brevoService.repairSentTimes({ env: { brevo_api_key: 'test' } }, { afterEmailId: 10 });
+		expect(result).toMatchObject({ processed: 2, updated: 0, skipped: 1, nextEmailId: 12, hasMore: false });
+		expect(result.errors).toEqual([{ emailId: 11, message: expect.stringContaining('send time') }]);
+		expect(mocks.repairBrevoEmailTime).toHaveBeenCalledTimes(1);
+	});
+
+	it('never imports an email using its open event date when send time is unavailable', async () => {
+		mocks.getEmailEventReport.mockResolvedValue({ events: [{ messageId: 'unknown', event: 'opened', date: '2026-07-20T08:00:00Z' }] });
+		vi.spyOn(brevoService, 'retrieveEmail').mockResolvedValue({ content: { body: '<p>Hello</p>' } });
+		const result = await brevoService.syncFromProvider({ env: { brevo_api_key: 'test' } });
+		expect(result.inserted).toBe(0);
+		expect(result.errors[0]).toContain('send time');
+		expect(mocks.insertFromProvider).not.toHaveBeenCalled();
+	});
+
+	it('uses matched list send metadata for time repair when historical content expired', async () => {
+		mocks.getTransacEmailsList.mockResolvedValue({ transactionalEmails: [
+			{ messageId: '<target>', uuid: 'target-uuid', email: 'recipient@example.com', date: '2020-01-03T08:00:00Z' }
+		] });
+		mocks.getTransacEmailContent.mockRejectedValue({ statusCode: 404, message: 'Content expired' });
+		const detail = await brevoService.retrieveEmail({ env: { brevo_api_key: 'test' } }, 'target', 'recipient@example.com', undefined, {}, false);
+		expect(detail.listItem.date).toBe('2020-01-03T08:00:00Z');
+		await expect(brevoService.retrieveEmail({ env: { brevo_api_key: 'test' } }, 'target', 'recipient@example.com')).rejects.toThrow('Content expired');
+	});
+
+	it('does not repair from another message or recipient and passes explicit historical dates', async () => {
+		mocks.getTransacEmailsList.mockResolvedValue({ transactionalEmails: [
+			{ messageId: '<other>', uuid: 'wrong', email: 'recipient@example.com' },
+			{ messageId: '<target>', uuid: 'wrong-recipient', email: 'other@example.com' }
+		] });
+		const range = { startDate: '2020-01-01', endDate: '2020-01-30' };
+		await expect(brevoService.retrieveEmail({ env: { brevo_api_key: 'test' } }, 'target', 'recipient@example.com', undefined, range, false)).rejects.toThrow('UUID');
+		expect(mocks.getTransacEmailsList).toHaveBeenCalledWith({ messageId: '<target>', limit: 100, sort: 'desc', ...range });
+		expect(mocks.getTransacEmailContent).not.toHaveBeenCalled();
+	});
+
 });

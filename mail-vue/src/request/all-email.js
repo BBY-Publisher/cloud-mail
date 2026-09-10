@@ -19,3 +19,7 @@ export function allEmailLatest(emailId) {
 export function allEmailSync() {
     return http.post('/allEmail/sync', null, {noMsg: true, timeout: 120 * 1000})
 }
+
+export function repairBrevoTime(params) {
+    return http.post('/allEmail/repairBrevoTime', params, {noMsg: true, timeout: 120 * 1000})
+}

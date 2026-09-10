@@ -1,4 +1,5 @@
 import orm from '../entity/orm';
+import { emailTimePagination } from '../utils/email-time-pagination';
 import email from '../entity/email';
 import { emailConst, isDel, settingConst } from '../const/entity-const';
 import { and, desc, eq, gt, inArray, isNull, lt, count, asc, sql, ne, or, like, lte, gte } from 'drizzle-orm';
@@ -81,15 +82,7 @@ const emailService = {
 			size = 50;
 		}
 
-		if (!emailId) {
-
-			if (timeSort) {
-				emailId = 0;
-			} else {
-				emailId = 9999999999;
-			}
-
-		}
+		const pagination = await emailTimePagination(c, params);
 
 		if (isNaN(allReceive)) {
 			let accountRow = await accountService.selectById(c, accountId);
@@ -134,18 +127,14 @@ const emailService = {
 				and(
 					inAccessible,
 				matchesKeyword,
-					timeSort ? gt(email.emailId, emailId) : lt(email.emailId, emailId),
+					pagination.condition,
 					eq(email.type, type),
 					eq(email.isDel, isDel.NORMAL),
 					eq(account.isDel, isDel.NORMAL)
 				)
 			);
 
-		if (timeSort) {
-			query.orderBy(asc(email.emailId));
-		} else {
-			query.orderBy(desc(email.emailId));
-		}
+		query.orderBy(...pagination.order);
 
 		const listQuery = query.limit(size).all();
 
@@ -1161,6 +1150,22 @@ const emailService = {
 		return row;
 	},
 
+	listBrevoTimeRepairBatch(c, afterEmailId, size) {
+		return orm(c).select().from(email).where(and(
+			eq(email.provider, 'brevo'), eq(email.type, emailConst.type.SEND),
+			gt(email.emailId, afterEmailId)
+		)).orderBy(asc(email.emailId)).limit(size).all();
+	},
+
+	async repairBrevoEmailTime(c, row, createTime) {
+		if (row.createTime === createTime) return false;
+		const changed = await orm(c).update(email).set({ createTime }).where(and(
+			eq(email.emailId, row.emailId), eq(email.provider, 'brevo'),
+			eq(email.resendEmailId, row.resendEmailId), eq(email.createTime, row.createTime)
+		)).returning({ emailId: email.emailId }).get();
+		return !!changed;
+	},
+
 	async selectUserEmailCountList(c, userIds, type, del = isDel.NORMAL) {
 		const result = await orm(c)
 			.select({
@@ -1191,15 +1196,7 @@ const emailService = {
 			size = 50;
 		}
 
-		if (!emailId) {
-
-			if (timeSort) {
-				emailId = 0;
-			} else {
-				emailId = 9999999999;
-			}
-
-		}
+		const pagination = await emailTimePagination(c, params);
 
 		const conditions = [];
 
@@ -1244,11 +1241,7 @@ const emailService = {
 
 		const countConditions = [...conditions];
 
-		if (timeSort) {
-			conditions.unshift(gt(email.emailId, emailId));
-		} else {
-			conditions.unshift(lt(email.emailId, emailId));
-		}
+		conditions.push(pagination.condition);
 
 		const query = orm(c).select({ ...email, userEmail: user.email })
 			.from(email)
@@ -1260,11 +1253,7 @@ const emailService = {
 			.leftJoin(user, eq(email.userId, user.userId))
 			.where(and(...countConditions));
 
-		if (timeSort) {
-			query.orderBy(asc(email.emailId));
-		} else {
-			query.orderBy(desc(email.emailId));
-		}
+		query.orderBy(...pagination.order);
 
 		const listQuery = query.limit(size).all();
 		const totalQuery = queryCount.get();
