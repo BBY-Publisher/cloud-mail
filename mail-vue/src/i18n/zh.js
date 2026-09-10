@@ -1,4 +1,6 @@
 const zh = {
+    inboxSearch: '搜索',
+    inboxSearchPlaceholder: '搜索主题、发件人或正文',
     inbox: '收件箱',
     drafts: '草稿箱',
     sent: '已发送',

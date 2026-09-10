@@ -69,7 +69,7 @@ const emailService = {
 
 	async list(c, params, userId) {
 
-		let { emailId, type, accountId, size, timeSort, allReceive } = params;
+		let { emailId, type, accountId, size, timeSort, allReceive, keyword } = params;
 
 		size = Number(size);
 		emailId = Number(emailId);
@@ -105,6 +105,14 @@ const emailService = {
 			return { list: [], total: 0, latestEmail: { emailId: 0, accountId, userId } };
 		}
 		const inAccessible = inArray(email.accountId, accountScope);
+		// Treat LIKE wildcards as literal user text; keep all values parameterized.
+		const search = typeof keyword === 'string' ? keyword.trim() : '';
+		const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+		const matchesKeyword = search ? or(
+			...[email.subject, email.name, email.sendEmail, email.text].map(column =>
+				sql`${column} LIKE ${pattern} ESCAPE '\\'`
+			)
+		) : undefined;
 
 		const query = orm(c)
 			.select({
@@ -125,6 +133,7 @@ const emailService = {
 			.where(
 				and(
 					inAccessible,
+				matchesKeyword,
 					timeSort ? gt(email.emailId, emailId) : lt(email.emailId, emailId),
 					eq(email.type, type),
 					eq(email.isDel, isDel.NORMAL),
@@ -148,6 +157,7 @@ const emailService = {
 			.where(
 				and(
 					inAccessible,
+				matchesKeyword,
 					eq(email.type, type),
 					eq(email.isDel, isDel.NORMAL),
 					eq(account.isDel, isDel.NORMAL)
@@ -157,6 +167,7 @@ const emailService = {
 		const latestEmailQuery = orm(c).select().from(email).where(
 			and(
 				inAccessible,
+				matchesKeyword,
 				eq(email.type, type),
 				eq(email.isDel, isDel.NORMAL)
 			))

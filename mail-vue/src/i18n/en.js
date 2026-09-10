@@ -1,4 +1,6 @@
 const en = {
+    inboxSearch: 'Search',
+    inboxSearchPlaceholder: 'Search subject, sender or message text',
     inbox: 'Inbox',
     drafts: 'Drafts',
     sent: 'Sent',
