@@ -786,7 +786,7 @@ function resetForm() {
   form.content = ''
   form.manyType = null
   form.includeSignature = true
-  // Reply starts without attachments; forwarding restores the source references.
+  // Reply and forward restore the source references after resetting the form.
   form.attachments = []
   form.sendType = ''
   form.emailId = 0
@@ -877,6 +877,7 @@ function openReply(email) {
       email.subject.startsWith('回复:')) ? email.subject : 'Re: ' + email.subject
   form.sendType = 'reply'
   form.emailId = email.emailId
+  form.attachments = toForwardAttachments(email.attList)
 
   defValue.value = ''
 

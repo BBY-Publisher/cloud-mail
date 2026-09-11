@@ -22,8 +22,8 @@ let objects;
 async function insertAttachment(id, key, options = {}) {
 	await env.db.prepare(`INSERT INTO attachments
 		(att_id, email_id, account_id, user_id, key, filename, mime_type, size, type, content_id)
-		VALUES (?, 1, 9, 99, ?, 'report.pdf', 'application/pdf', 4, 0, ?)`)
-		.bind(id, key, options.contentId || null).run();
+		VALUES (?, 1, 9, 99, ?, 'report.pdf', 'application/pdf', 4, ?, ?)`)
+		.bind(id, key, options.type || 0, options.contentId || null).run();
 }
 
 beforeEach(async () => {
@@ -64,11 +64,14 @@ function setupSend() {
 }
 
 describe('forward attachments', () => {
-	it('copies editable ordinary attachment references without mutating the source or including inline images', () => {
+	it('keeps attachment-list files with Content-ID when composing and excludes EMBED rows', () => {
 		const source = [{ attId: 1, filename: 'report.pdf', size: 4 },
-			{ attId: 2, contentId: 'cid' }, { attId: 3, type: 1 }];
+			{ attId: 2, filename: 'video.mp4', size: 4, type: 0, contentId: '<file-cid>' }, { attId: 3, type: 1 }];
 		const selected = toForwardAttachments(source);
-		expect(selected).toEqual([{ storageType: 'existing', attId: 1, filename: 'report.pdf', size: 4 }]);
+		expect(selected).toEqual([
+			{ storageType: 'existing', attId: 1, filename: 'report.pdf', size: 4 },
+			{ storageType: 'existing', attId: 2, filename: 'video.mp4', size: 4 }
+		]);
 		selected.splice(0, 1);
 		expect(source).toHaveLength(3);
 		expect(toForwardAttachments()).toEqual([]);
@@ -123,7 +126,7 @@ describe('forward attachments', () => {
 
 	it('rejects inaccessible, missing and inline attachment references before storage access', async () => {
 		await insertAttachment(1, legacyKey);
-		await insertAttachment(2, legacyKey, { contentId: 'inline' });
+		await insertAttachment(2, legacyKey, { contentId: 'inline', type: 1 });
 		vi.mocked(accountMemberService.can).mockResolvedValue(false);
 		await expect(resolve([reference(1)])).rejects.toThrow('not accessible');
 		await expect(resolve([reference(99)])).rejects.toThrow('unavailable');
@@ -156,13 +159,13 @@ describe('forward attachments', () => {
 		expect(new TextDecoder().decode(objects.get(result.key).content)).toBe('test');
 	});
 
-	it('sends migrated and external links, persists both attachments, and supports forwarding again', async () => {
-		await insertAttachment(1, legacyKey);
+	it.each(['forward', 'reply'])('%s sends Content-ID files and external links, persists them, and supports composing again', async sendType => {
+		await insertAttachment(1, legacyKey, { contentId: '<file-cid>' });
 		await insertAttachment(2, 'https://files.example.org/report.pdf');
 		await env.kv.put(legacyKey, 'test');
 		const send = setupSend();
 		const [sent] = await emailService.send(c, { accountId: 2, receiveEmail: ['recipient@outside.test'],
-			sendType: 'forward', subject: 'Forward', content: '<p>Original body</p>', text: 'Original body',
+			sendType, emailId: 1, subject: 'Forward', content: '<p>Original body</p>', text: 'Original body',
 			includeSignature: false, attachments: [reference(1), reference(2)] }, 7);
 		const request = send.mock.calls[0][1];
 		expect(request.attachments).toEqual([]);
@@ -186,9 +189,9 @@ describe('forward attachments', () => {
 		expect((await env.db.prepare('SELECT COUNT(*) AS total FROM email').first()).total).toBe(1);
 	});
 
-	it('does not allow source references to bypass validation outside forwarding', async () => {
+	it('does not allow source references to bypass validation in a new message', async () => {
 		const send = setupSend();
-		await expect(emailService.send(c, { sendType: 'reply', attachments: [reference(1)] }, 7))
+		await expect(emailService.send(c, { sendType: '', attachments: [reference(1)] }, 7))
 			.rejects.toThrow('Invalid attachment');
 		expect(send).not.toHaveBeenCalled();
 		expect(c.env.r2.get).not.toHaveBeenCalled();

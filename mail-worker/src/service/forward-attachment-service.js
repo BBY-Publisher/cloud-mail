@@ -81,7 +81,8 @@ const forwardAttachmentService = {
 			const record = await orm(c).select({ attachment: att, source: email }).from(att)
 				.innerJoin(email, eq(att.emailId, email.emailId))
 				.where(and(eq(att.attId, attachment.attId), eq(att.type, attConst.type.ATT))).get();
-			if (!record || record.attachment.contentId) {
+			// ATT rows can have Content-ID too; the query already excludes EMBED rows.
+			if (!record) {
 				throw new BizError('Source attachment is unavailable', 404);
 			}
 			if (!isAdmin && (record.source.isDel !== isDel.NORMAL

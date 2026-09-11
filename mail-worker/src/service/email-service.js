@@ -239,8 +239,9 @@ const emailService = {
 		if (!Array.isArray(attachments) || attachments.length > 10) {
 			throw new BizError(t('attLimit'));
 		}
+		const inheritsAttachments = sendType === 'forward' || sendType === 'reply';
 		const invalidAttachment = findInvalidAttachment(attachments.filter(attachment =>
-			!(sendType === 'forward' && attachment?.storageType === 'existing')));
+			!(inheritsAttachments && attachment?.storageType === 'existing')));
 		if (invalidAttachment) {
 			throw new BizError(
 				`Invalid attachment or file exceeds 64 MiB: ${invalidAttachment.filename || 'attachment'}`,
@@ -337,7 +338,7 @@ const emailService = {
 			name = emailUtils.getName(accountRow.email);
 		}
 
-		if (sendType === 'forward') {
+		if (inheritsAttachments) {
 			attachments = await forwardAttachmentService.resolve(c, attachments, userId, {
 				isAdmin: settingService.isAdmin(setting, userRow.email), r2Domain
 			});
