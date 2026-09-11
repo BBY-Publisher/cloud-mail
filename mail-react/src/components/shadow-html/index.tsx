@@ -1,14 +1,12 @@
 import { useEffect, useRef } from 'react';
+import { sanitizeEmailHtml } from '@/utils/sanitize-email-html';
 
 interface ShadowHtmlProps {
   html: string;
 }
 
 function buildShadowContent(html: string): string {
-  const bodyStyleRegex = /<body[^>]*style="([^"]*)"[^>]*>/i;
-  const bodyStyleMatch = html.match(bodyStyleRegex);
-  const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
-  const cleanedHtml = html.replace(/<\/?body[^>]*>/gi, '');
+  const cleanedHtml = sanitizeEmailHtml(html);
 
   return `
     <style>
@@ -31,7 +29,6 @@ function buildShadowContent(html: string): string {
         width: fit-content;
         height: fit-content;
         min-width: 100%;
-        ${bodyStyle || ''}
       }
       img:not(table img) { max-width: 100%; height: auto !important; }
     </style>

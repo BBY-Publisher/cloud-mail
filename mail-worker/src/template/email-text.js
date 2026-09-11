@@ -1,3 +1,5 @@
+import { escapeEmailText } from '../utils/sanitize-email-html';
+
 export default function emailTextTemplate(text) {
 	return `<!DOCTYPE html>
 <html lang='en' >
@@ -29,7 +31,7 @@ export default function emailTextTemplate(text) {
     </style>
 </head>
 <body>
-<span>${text}</span>
+<span>${escapeEmailText(text)}</span>
 </body>
 </html>`
 }
