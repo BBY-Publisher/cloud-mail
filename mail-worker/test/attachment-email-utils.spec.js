@@ -53,6 +53,14 @@ describe('appendUploadedAttachmentLinks', () => {
 		expect(appendUploadedAttachmentLinks('<p>Hello</p>', [])).toBe('<p>Hello</p>');
 	});
 
+	it('adds newly selected links even when a forwarded message already has an attachment section', () => {
+		const original = appendUploadedAttachmentLinks('<p>Hello</p>', [uploadedAttachment]);
+		const added = { ...uploadedAttachment, filename: 'new.pdf', url: 'https://mail.example.com/new.pdf' };
+		const result = appendUploadedAttachmentLinks(original, [uploadedAttachment, added]);
+		expect(result).toContain('href="https://mail.example.com/new.pdf"');
+		expect(result.split(`href="${uploadedAttachment.url}"`)).toHaveLength(2);
+	});
+
 	it('rejects non-http download URLs from generated HTML', () => {
 		const unsafe = { ...uploadedAttachment, url: 'javascript:alert(1)' };
 		const result = appendUploadedAttachmentLinks('<p>Hello</p>', [unsafe]);

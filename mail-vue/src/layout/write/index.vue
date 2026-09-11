@@ -210,6 +210,7 @@ import {ElMessageBox} from "element-plus";
 import {signatureGet} from "@/request/signature.js";
 import {useSignatureStore} from "@/store/signature.js";
 import {classifyComposeFiles, isImageUpload} from "@/utils/compose-upload.js";
+import {toForwardAttachments} from "@/utils/forward-attachments.js";
 
 defineExpose({
   open,
@@ -250,7 +251,8 @@ const backReply = reactive({
   bcc: [],
   subject: '',
   content: '',
-  sendType: ''
+  sendType: '',
+  attachments: '[]'
 })
 const form = reactive({
   sendEmail: '',
@@ -784,10 +786,7 @@ function resetForm() {
   form.content = ''
   form.manyType = null
   form.includeSignature = true
-  // Intentionally reset attachments on reply/forward. Original email
-  // attachments that are not referenced by an <img> (non-inline ATT rows)
-  // are dropped — matches Gmail/Outlook reply semantics. Do not "fix"
-  // this without confirming product intent.
+  // Reply starts without attachments; forwarding restores the source references.
   form.attachments = []
   form.sendType = ''
   form.emailId = 0
@@ -798,6 +797,7 @@ function resetForm() {
   backReply.subject = ''
   backReply.receiveEmail = []
   backReply.sendType = ''
+  backReply.attachments = '[]'
   editor.value.clearEditor()
 }
 
@@ -817,6 +817,7 @@ function openForward(email) {
 
   form.subject = email.subject
   form.sendType = 'forward'
+  form.attachments = toForwardAttachments(email.attList)
 
   defValue.value = ''
 
@@ -856,6 +857,7 @@ function openForward(email) {
       backReply.subject = form.subject
       backReply.receiveEmail = form.receiveEmail
       backReply.sendType = form.sendType
+      backReply.attachments = JSON.stringify(form.attachments)
     })
 
   });
@@ -897,6 +899,7 @@ function openReply(email) {
       backReply.subject = form.subject
       backReply.receiveEmail = form.receiveEmail
       backReply.sendType = form.sendType
+      backReply.attachments = JSON.stringify(form.attachments)
     })
   })
 
@@ -989,7 +992,8 @@ function close() {
     }
     let ccFlag = (form.cc || []).length === (backReply.cc || []).length && (form.cc || []).every((v, i) => v === backReply.cc[i])
     let bccFlag = (form.bcc || []).length === (backReply.bcc || []).length && (form.bcc || []).every((v, i) => v === backReply.bcc[i])
-    if (subjectFlag && contentFlag && receiveFlag && ccFlag && bccFlag) {
+    const attachmentsFlag = JSON.stringify(form.attachments) === backReply.attachments
+    if (subjectFlag && contentFlag && receiveFlag && ccFlag && bccFlag && attachmentsFlag) {
       resetForm();
       close()
       return;

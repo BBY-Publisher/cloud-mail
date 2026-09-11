@@ -41,11 +41,13 @@ import {
 	appendUploadedAttachmentLinks,
 	appendUploadedAttachmentTextLinks,
 	findInvalidAttachment,
+	isExternalAttachment,
 	normalizeUploadedAttachmentUrls,
 	partitionEmailAttachments
 } from '../utils/attachment-email-utils';
 import attachmentUploadService from './attachment-upload-service';
 import { MAX_INLINE_IMAGES } from './att-service';
+import forwardAttachmentService from './forward-attachment-service';
 
 const PROVIDER = {
 	CF: 'cf',
@@ -234,15 +236,16 @@ const emailService = {
 			attachments = [] //附件
 		} = params;
 
-		const invalidAttachment = findInvalidAttachment(attachments);
+		if (!Array.isArray(attachments) || attachments.length > 10) {
+			throw new BizError(t('attLimit'));
+		}
+		const invalidAttachment = findInvalidAttachment(attachments.filter(attachment =>
+			!(sendType === 'forward' && attachment?.storageType === 'existing')));
 		if (invalidAttachment) {
 			throw new BizError(
 				`Invalid attachment or file exceeds 64 MiB: ${invalidAttachment.filename || 'attachment'}`,
 				413
 			);
-		}
-		if (attachments.length > 10) {
-			throw new BizError(t('attLimit'));
 		}
 
 		const setting = await settingService.query(c);
@@ -334,6 +337,12 @@ const emailService = {
 			name = emailUtils.getName(accountRow.email);
 		}
 
+		if (sendType === 'forward') {
+			attachments = await forwardAttachmentService.resolve(c, attachments, userId, {
+				isAdmin: settingService.isAdmin(setting, userRow.email), r2Domain
+			});
+		}
+
 		const signedContent = await this.withSignature(c, {
 			content,
 			text,
@@ -348,16 +357,18 @@ const emailService = {
 		const {
 			uploaded,
 			provider: providerAttachments
-		} = partitionEmailAttachments(attachments);
+		} = partitionEmailAttachments(attachments.filter(attachment => !isExternalAttachment(attachment)));
+		const externalAttachments = attachments.filter(isExternalAttachment);
 		const validatedUploadedAttachments =
 			await attachmentUploadService.validateReferences(c, uploaded);
 		const uploadedAttachments = normalizeUploadedAttachmentUrls(
 			validatedUploadedAttachments,
 			new URL(c.req.url).origin
 		);
-		attachments = [...validatedUploadedAttachments, ...providerAttachments];
-		html = appendUploadedAttachmentLinks(html, uploadedAttachments);
-		text = appendUploadedAttachmentTextLinks(text, uploadedAttachments);
+		attachments = [...validatedUploadedAttachments, ...providerAttachments, ...externalAttachments];
+		const linkedAttachments = [...uploadedAttachments, ...externalAttachments];
+		html = appendUploadedAttachmentLinks(html, linkedAttachments);
+		text = appendUploadedAttachmentTextLinks(text, linkedAttachments);
 
 		let emailRow = {
 			messageId: null,

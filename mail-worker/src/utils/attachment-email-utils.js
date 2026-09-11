@@ -1,4 +1,5 @@
 import { MAX_ATTACHMENT_UPLOAD_SIZE } from '../const/attachment-const';
+import { parseHTML } from 'linkedom';
 
 function escapeHtml(value) {
 	return String(value ?? '')
@@ -9,13 +10,17 @@ function escapeHtml(value) {
 		.replace(/'/g, '&#039;');
 }
 
-function safeDownloadUrl(value) {
+export function safeDownloadUrl(value) {
 	try {
 		const url = new URL(String(value || ''));
 		return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
 	} catch (_) {
 		return '';
 	}
+}
+
+export function isExternalAttachment(attachment) {
+	return attachment?.storageType === 'external' && !!safeDownloadUrl(attachment.url);
 }
 
 function formatBytes(bytes) {
@@ -75,6 +80,7 @@ export function findInvalidAttachment(attachments = [], maxSize = MAX_ATTACHMENT
 		if (!attachment || typeof attachment.filename !== 'string' || !attachment.filename.trim()) {
 			return attachment || { filename: '' };
 		}
+		if (isExternalAttachment(attachment)) continue;
 
 		const size = isUploadedR2Attachment(attachment)
 			? Number(attachment.size)
@@ -89,16 +95,16 @@ export function findInvalidAttachment(attachments = [], maxSize = MAX_ATTACHMENT
 }
 
 export function appendUploadedAttachmentLinks(html = '', attachments = []) {
-	if (String(html).includes('data-cloud-mail-attachments="true"')) {
-		return html;
-	}
+	const { document } = parseHTML(String(html));
+	const existingUrls = new Set(Array.from(document.querySelectorAll('a[href]'))
+		.map(link => link.getAttribute('href')));
 
 	const items = attachments
 		.map(attachment => ({
 			...attachment,
 			safeUrl: safeDownloadUrl(attachment.url)
 		}))
-		.filter(attachment => attachment.safeUrl);
+		.filter(attachment => attachment.safeUrl && !existingUrls.has(attachment.safeUrl));
 
 	if (items.length === 0) {
 		return html;

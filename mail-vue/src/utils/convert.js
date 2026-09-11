@@ -5,7 +5,7 @@ export function cvtR2Url(key) {
         return + 'https://' + ''
     }
 
-    if (key.startsWith('https://')) {
+    if (/^https?:\/\//i.test(key)) {
         return key
     }
 
