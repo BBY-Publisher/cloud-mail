@@ -126,17 +126,8 @@
             @focus="focusChange"
             @files-drop="handleDroppedFiles"
         />
-        <div class="button-item">
-          <div class="att-add" @click="chooseFile">
-            <Icon icon="iconamoon:attachment-fill" width="24" height="24"/>
-          </div>
-          <div class="att-clear" @click="clearContent">
-            <Icon icon="icon-park-outline:clear-format" width="24" height="24 "/>
-          </div>
-          <div class="signature-check">
-            <el-checkbox v-model="form.includeSignature">{{ t('includeSignature') }}</el-checkbox>
-          </div>
-          <div class="att-list">
+        <div class="editor-footer">
+          <div class="att-list" v-if="form.attachments.length > 0">
             <div class="att-item" v-for="(item,index) in form.attachments" :key="item.key || item.localId || index">
               <Icon v-bind="getIconByName(item.filename)"/>
               <span class="att-filename">{{ item.filename }}</span>
@@ -147,11 +138,23 @@
                     width="22" height="22"/>
             </div>
           </div>
-          <div class="send-actions">
-            <el-button @click="openPreview">{{ $t('preview') }}</el-button>
-            <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-if="form.sendType === 'reply'">{{ $t('reply') }}</el-button>
-            <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-else-if="form.sendType === 'forward'">{{ $t('forward') }}</el-button>
-            <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-else>{{ $t('send') }}</el-button>
+          <div class="button-item">
+            <div class="att-add" @click="chooseFile">
+              <Icon icon="iconamoon:attachment-fill" width="24" height="24"/>
+            </div>
+            <div class="att-clear" @click="clearContent">
+              <Icon icon="icon-park-outline:clear-format" width="24" height="24 "/>
+            </div>
+            <div class="signature-check">
+              <el-checkbox v-model="form.includeSignature">{{ t('includeSignature') }}</el-checkbox>
+            </div>
+            <div class="button-spacer"></div>
+            <div class="send-actions">
+              <el-button @click="openPreview">{{ $t('preview') }}</el-button>
+              <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-if="form.sendType === 'reply'">{{ $t('reply') }}</el-button>
+              <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-else-if="form.sendType === 'forward'">{{ $t('forward') }}</el-button>
+              <el-button type="primary" :disabled="uploadingCount > 0" @click="sendEmail" v-else>{{ $t('send') }}</el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -1141,6 +1144,53 @@ function close() {
       .item-title {
       }
 
+      .editor-footer {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+
+        .att-list {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+          gap: 6px;
+          max-height: 118px;
+          padding-right: 4px;
+          overflow-x: hidden;
+          overflow-y: auto;
+          align-content: start;
+          scrollbar-gutter: stable;
+
+          @media (max-width: 560px) {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .att-item {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto auto;
+            align-items: center;
+            gap: 5px;
+            min-width: 0;
+            height: 32px;
+            box-sizing: border-box;
+            font-size: 14px;
+            padding: 4px 5px;
+            background: var(--light-ill);
+            border-radius: 4px;
+
+            .att-filename {
+              min-width: 0;
+              white-space: nowrap;
+              text-overflow: ellipsis;
+              overflow: hidden;
+            }
+
+            .att-size {
+              white-space: nowrap;
+            }
+          }
+        }
+      }
+
       .button-item {
         display: grid;
         grid-template-columns: auto auto auto 1fr auto;
@@ -1150,17 +1200,13 @@ function close() {
           grid-template-columns: auto auto 1fr;
           gap: 8px;
 
-          .att-list {
-            grid-column: 1 / -1;
-            order: 2;
-            padding-left: 0;
-            padding-right: 0;
+          .button-spacer {
+            display: none;
           }
 
           .send-actions {
             grid-column: 1 / -1;
             justify-content: flex-end;
-            order: 3;
           }
         }
 
@@ -1176,35 +1222,6 @@ function close() {
         .signature-check {
           margin-left: 12px;
           white-space: nowrap;
-        }
-
-        .att-list {
-          display: grid;
-          gap: 5px;
-          grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-          padding-left: 10px;
-          padding-right: 10px;
-          max-height: 110px;
-          overflow-y: auto;
-          @media (max-width: 450px) {
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-          }
-
-          .att-item {
-            display: grid;
-            grid-template-columns: auto 1fr auto auto;
-            gap: 5px;
-            height: 32px;
-            font-size: 14px;
-            padding: 4px 5px;
-            background: var(--light-ill);
-            border-radius: 4px;
-            .att-filename {
-              white-space: nowrap;
-              text-overflow: ellipsis;
-              overflow: hidden;
-            }
-          }
         }
 
         .send-actions {
