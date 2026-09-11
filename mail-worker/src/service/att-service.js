@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import domainUtils from '../utils/domain-uitls';
 import settingService from "./setting-service";
 import { isUploadedAttachmentKey } from '../const/attachment-const';
-import { isExternalAttachment, safeDownloadUrl } from '../utils/attachment-email-utils';
+import { isExternalAttachment, isReferencedAttachment, safeDownloadUrl } from '../utils/attachment-email-utils';
 
 export const ATTACHMENT_INSERT_BATCH_SIZE = 5;
 
@@ -40,7 +40,8 @@ export async function toStoredAttachment(attachment, userId, accountId, emailId)
 		|| (typeof attachment.type === 'string' ? attachment.type : null)
 		|| 'application/octet-stream';
 
-	if ((attachment.storageType === 'R2' && attachment.key) || isExternalAttachment(attachment)) {
+	if ((attachment.storageType === 'R2' && attachment.key)
+		|| isExternalAttachment(attachment) || isReferencedAttachment(attachment)) {
 		if (attachment.storageType === 'R2' && !isUploadedAttachmentKey(attachment.key)) {
 			throw new Error('Invalid uploaded attachment key');
 		}

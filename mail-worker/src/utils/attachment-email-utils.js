@@ -23,6 +23,11 @@ export function isExternalAttachment(attachment) {
 	return attachment?.storageType === 'external' && !!safeDownloadUrl(attachment.url);
 }
 
+export function isReferencedAttachment(attachment) {
+	return attachment?.storageType === 'reference'
+		&& typeof attachment.key === 'string' && !!safeDownloadUrl(attachment.url);
+}
+
 function formatBytes(bytes) {
 	const size = Number(bytes) || 0;
 	if (size < 1024) return `${size} B`;
@@ -77,6 +82,9 @@ function base64ByteSize(content) {
 
 export function findInvalidAttachment(attachments = [], maxSize = MAX_ATTACHMENT_UPLOAD_SIZE) {
 	for (const attachment of attachments || []) {
+		// Resolved references are server-only. Clients must submit an existing attId
+		// so the source email's read permission is checked before reusing its key.
+		if (attachment?.storageType === 'reference') return attachment;
 		if (!attachment || typeof attachment.filename !== 'string' || !attachment.filename.trim()) {
 			return attachment || { filename: '' };
 		}

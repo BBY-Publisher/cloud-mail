@@ -12,12 +12,12 @@ import userService from '../src/service/user-service';
 import roleService from '../src/service/role-service';
 import accountService from '../src/service/account-service';
 import { toForwardAttachments } from '../../mail-vue/src/utils/forward-attachments';
-import { MAX_ATTACHMENT_UPLOAD_SIZE } from '../src/const/attachment-const';
+import attService from '../src/service/att-service';
 
 const uploadKey = 'attachments/11111111-1111-4111-8111-111111111111.pdf';
 const legacyKey = 'attachments/0123456789abcdef0123456789abcdef.pdf';
 let c;
-let objects;
+let objectIo;
 
 async function insertAttachment(id, key, options = {}) {
 	await env.db.prepare(`INSERT INTO attachments
@@ -33,21 +33,22 @@ beforeEach(async () => {
 			.join(', ')})`).run();
 	}
 	await env.db.prepare('INSERT INTO email (email_id, account_id, user_id, is_del) VALUES (1, 9, 99, 0)').run();
-	objects = new Map();
-	const get = vi.fn(async key => {
-		const object = objects.get(key);
-		return object ? { ...object, arrayBuffer: async () => object.content } : null;
-	});
-	c = { req: { url: 'https://mail.example.com/api/email/send' }, env: { ...env, r2: {
-		get, head: get,
-		put: vi.fn(async (key, content, metadata) => {
-			objects.set(key, { size: content.byteLength, content, ...metadata });
-		})
-	} } };
+	const noObjectAccess = () => vi.fn(async () => { throw new Error('Unexpected object access'); });
+	objectIo = { get: noObjectAccess(), head: noObjectAccess(), put: noObjectAccess(),
+		kvGet: noObjectAccess(), storageGet: noObjectAccess(), storagePut: noObjectAccess() };
+	c = { req: { url: 'https://mail.example.com/api/email/send' }, env: { ...env,
+		r2: { get: objectIo.get, head: objectIo.head, put: objectIo.put },
+		kv: { get: env.kv.get.bind(env.kv), put: env.kv.put.bind(env.kv), getWithMetadata: objectIo.kvGet }
+	} };
+	vi.spyOn(r2Service, 'getObj').mockImplementation(objectIo.storageGet);
+	vi.spyOn(r2Service, 'putObj').mockImplementation(objectIo.storagePut);
 	vi.spyOn(accountMemberService, 'can').mockResolvedValue(true);
 	vi.spyOn(r2Service, 'storageType').mockResolvedValue('R2');
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+	for (const method of Object.values(objectIo)) expect(method).not.toHaveBeenCalled();
+	vi.restoreAllMocks();
+});
 
 const resolve = (attachments, options) => forwardAttachmentService.resolve(c, attachments, 7, options);
 const reference = attId => ({ storageType: 'existing', attId });
@@ -77,52 +78,33 @@ describe('forward attachments', () => {
 		expect(toForwardAttachments()).toEqual([]);
 	});
 
-	it('copies original KV bytes into R2 and returns a downloadable upload reference', async () => {
+	it.each(['KV', 'R2', 'S3'])('reuses the original %s key and URL without object I/O or an R2 binding', async storageType => {
 		await insertAttachment(1, legacyKey);
-		await env.kv.put(legacyKey, 'test');
+		vi.mocked(r2Service.storageType).mockResolvedValue(storageType);
+		c.env.r2 = undefined;
 		const [result] = await resolve([reference(1)]);
-		expect(result).toMatchObject({ storageType: 'R2', filename: 'report.pdf', size: 4 });
-		expect(result.url).toBe(`https://mail.example.com/api/oss/${result.key}`);
-		expect(new TextDecoder().decode(objects.get(result.key).content)).toBe('test');
-		expect(await env.kv.get(legacyKey)).toBe('test');
+		expect(result).toEqual({ storageType: 'reference', key: legacyKey,
+			url: `https://mail.example.com/api/oss/${legacyKey}`, filename: 'report.pdf',
+			contentType: 'application/pdf', size: 4 });
 		expect(accountMemberService.can).toHaveBeenCalledWith(c, 9, 7, 'read');
 	});
 
-	it('reuses an existing R2 upload without copying its bytes', async () => {
+	it('uses the configured public attachment domain and reuses UUID upload keys', async () => {
 		await insertAttachment(1, uploadKey);
-		objects.set(uploadKey, { size: 4, content: new TextEncoder().encode('test').buffer });
-		expect((await resolve([reference(1)]))[0].key).toBe(uploadKey);
-		expect(c.env.r2.put).not.toHaveBeenCalled();
+		const [result] = await resolve([reference(1)], { r2Domain: 'assets.example.com' });
+		expect(result.key).toBe(uploadKey);
+		expect(result.url).toBe(`https://assets.example.com/${uploadKey}`);
 	});
 
-	it('copies legacy R2 and S3 objects into the upload namespace', async () => {
-		await insertAttachment(1, legacyKey);
-		objects.set(legacyKey, { size: 4, content: new TextEncoder().encode('test').buffer });
-		const [first] = await resolve([reference(1)]);
-		expect(first.key).not.toBe(legacyKey);
-		objects.clear();
-		vi.mocked(r2Service.storageType).mockResolvedValue('S3');
-		vi.spyOn(r2Service, 'getObj').mockResolvedValue(new Response('test'));
-		const [second] = await resolve([reference(1)]);
-		expect(objects.get(second.key).size).toBe(4);
-	});
-
-	it('retains an external URL without fetching it or requiring R2', async () => {
-		await insertAttachment(1, 'https://files.example.org/report.pdf');
-		c.env.r2 = undefined;
-		expect(await resolve([reference(1)])).toEqual([{
-			storageType: 'external', url: 'https://files.example.org/report.pdf',
-			filename: 'report.pdf', contentType: 'application/pdf', size: 4
-		}]);
-	});
-
-	it('recognizes our own download URLs as stored files instead of external links', async () => {
-		await insertAttachment(1, `https://mail.example.com/api/oss/${legacyKey}`);
-		await insertAttachment(2, `https://cdn.example.com/${legacyKey}`);
-		await env.kv.put(legacyKey, 'test');
-		const results = await resolve([reference(1), reference(2)], { r2Domain: 'cdn.example.com' });
-		expect(results.every(item => item.storageType === 'R2')).toBe(true);
-	});
+	it.each(['https://files.example.org/report.pdf', `https://mail.example.com/api/oss/${legacyKey}`])(
+		'preserves an original absolute URL: %s', async url => {
+			await insertAttachment(1, url);
+			c.env.r2 = undefined;
+			expect(await resolve([reference(1)])).toEqual([{
+				storageType: 'reference', key: url, url,
+				filename: 'report.pdf', contentType: 'application/pdf', size: 4
+			}]);
+		});
 
 	it('rejects inaccessible, missing and inline attachment references before storage access', async () => {
 		await insertAttachment(1, legacyKey);
@@ -142,27 +124,22 @@ describe('forward attachments', () => {
 		expect(await resolve([reference(1)], { isAdmin: true })).toHaveLength(1);
 	});
 
-	it('fails instead of silently dropping missing, oversized or unwritable attachments', async () => {
-		await insertAttachment(1, uploadKey);
-		await expect(resolve([reference(1)])).rejects.toThrow('file is missing');
-		objects.set(uploadKey, { size: MAX_ATTACHMENT_UPLOAD_SIZE + 1 });
-		await expect(resolve([reference(1)])).rejects.toThrow('exceeds 64 MiB');
-		objects.clear();
-		await env.kv.put(uploadKey, 'test');
-		vi.mocked(c.env.r2.put).mockRejectedValue(new Error('R2 unavailable'));
-		await expect(resolve([reference(1)])).rejects.toThrow('R2 unavailable');
+	it('leaves newly selected files on the normal upload/send path', async () => {
+		const files = [{ filename: 'notes.txt', content: 'dGVzdA==' },
+			{ storageType: 'R2', key: uploadKey, url: `https://mail.example.com/api/oss/${uploadKey}` }];
+		expect(await resolve(files)).toEqual(files);
 	});
 
-	it('stores newly added base64 files in R2 during forwarding', async () => {
-		const [result] = await resolve([{ filename: 'notes.txt', content: 'dGVzdA==' }]);
-		expect(result.storageType).toBe('R2');
-		expect(new TextDecoder().decode(objects.get(result.key).content)).toBe('test');
+	it('rejects unsafe stored keys instead of producing unsafe download links', async () => {
+		await insertAttachment(1, 'javascript:alert(1)');
+		await insertAttachment(2, 'attachments/../private');
+		await expect(resolve([reference(1)])).rejects.toThrow('Invalid source attachment key');
+		await expect(resolve([reference(2)])).rejects.toThrow('Invalid source attachment key');
 	});
 
 	it.each(['forward', 'reply'])('%s sends Content-ID files and external links, persists them, and supports composing again', async sendType => {
 		await insertAttachment(1, legacyKey, { contentId: '<file-cid>' });
 		await insertAttachment(2, 'https://files.example.org/report.pdf');
-		await env.kv.put(legacyKey, 'test');
 		const send = setupSend();
 		const [sent] = await emailService.send(c, { accountId: 2, receiveEmail: ['recipient@outside.test'],
 			sendType, emailId: 1, subject: 'Forward', content: '<p>Original body</p>', text: 'Original body',
@@ -174,19 +151,30 @@ describe('forward attachments', () => {
 		expect(request.text).toContain('https://files.example.org/report.pdf');
 		expect(sent.attList).toHaveLength(2);
 		const again = await resolve(toForwardAttachments(sent.attList));
-		expect(again.map(item => item.storageType)).toEqual(['R2', 'external']);
+		expect(again.map(item => item.key)).toEqual([legacyKey, 'https://files.example.org/report.pdf']);
+		expect(sent.attList.map(item => item.key)).toEqual([legacyKey, 'https://files.example.org/report.pdf']);
 	});
 
-	it('does not call the provider or create sent mail when R2 persistence fails', async () => {
+	it('keeps the shared file when deleting the source and removes it only after its final reference', async () => {
 		await insertAttachment(1, legacyKey);
-		await env.kv.put(legacyKey, 'test');
-		const send = setupSend();
-		vi.mocked(c.env.r2.put).mockRejectedValue(new Error('R2 unavailable'));
-		await expect(emailService.send(c, { accountId: 2, receiveEmail: ['recipient@outside.test'],
+		setupSend();
+		const [sent] = await emailService.send(c, { accountId: 2, receiveEmail: ['recipient@outside.test'],
 			sendType: 'forward', subject: 'Forward', content: '<p>Body</p>', includeSignature: false,
-			attachments: [reference(1)] }, 7)).rejects.toThrow('R2 unavailable');
+			attachments: [reference(1)] }, 7);
+		const removeObject = vi.spyOn(r2Service, 'delete').mockResolvedValue();
+		await attService.removeByEmailIds(c, [1]);
+		expect(removeObject).not.toHaveBeenCalled();
+		expect((await resolve(toForwardAttachments(sent.attList)))[0].key).toBe(legacyKey);
+		await attService.removeByEmailIds(c, [sent.emailId]);
+		expect(removeObject).toHaveBeenCalledExactlyOnceWith(c, [legacyKey]);
+	});
+
+	it('rejects client-forged resolved keys even with otherwise valid attachment content', async () => {
+		const send = setupSend();
+		await expect(emailService.send(c, { sendType: 'forward', attachments: [{ storageType: 'reference',
+			key: legacyKey, url: `https://mail.example.com/api/oss/${legacyKey}`,
+			filename: 'report.pdf', content: 'dGVzdA==' }] }, 7)).rejects.toThrow('Invalid attachment');
 		expect(send).not.toHaveBeenCalled();
-		expect((await env.db.prepare('SELECT COUNT(*) AS total FROM email').first()).total).toBe(1);
 	});
 
 	it('does not allow source references to bypass validation in a new message', async () => {

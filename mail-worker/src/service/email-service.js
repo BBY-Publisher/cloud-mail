@@ -42,6 +42,7 @@ import {
 	appendUploadedAttachmentTextLinks,
 	findInvalidAttachment,
 	isExternalAttachment,
+	isReferencedAttachment,
 	normalizeUploadedAttachmentUrls,
 	partitionEmailAttachments
 } from '../utils/attachment-email-utils';
@@ -358,16 +359,18 @@ const emailService = {
 		const {
 			uploaded,
 			provider: providerAttachments
-		} = partitionEmailAttachments(attachments.filter(attachment => !isExternalAttachment(attachment)));
-		const externalAttachments = attachments.filter(isExternalAttachment);
+		} = partitionEmailAttachments(attachments.filter(attachment =>
+			!isExternalAttachment(attachment) && !isReferencedAttachment(attachment)));
+		const existingLinks = attachments.filter(attachment =>
+			isExternalAttachment(attachment) || isReferencedAttachment(attachment));
 		const validatedUploadedAttachments =
 			await attachmentUploadService.validateReferences(c, uploaded);
 		const uploadedAttachments = normalizeUploadedAttachmentUrls(
 			validatedUploadedAttachments,
 			new URL(c.req.url).origin
 		);
-		attachments = [...validatedUploadedAttachments, ...providerAttachments, ...externalAttachments];
-		const linkedAttachments = [...uploadedAttachments, ...externalAttachments];
+		attachments = [...validatedUploadedAttachments, ...providerAttachments, ...existingLinks];
+		const linkedAttachments = [...uploadedAttachments, ...existingLinks];
 		html = appendUploadedAttachmentLinks(html, linkedAttachments);
 		text = appendUploadedAttachmentTextLinks(text, linkedAttachments);
 
