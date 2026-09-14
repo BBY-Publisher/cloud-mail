@@ -107,8 +107,32 @@
                   </div>
                 </div>
               </div>
-              <div class="email-right" :style="showUserInfo ? 'align-self: start;':''">
+              <div class="email-right"
+                   :class="{ 'has-attachments': props.type === 'email' && item.attList?.length }"
+                   :style="showUserInfo ? 'align-self: start;':''">
                 <span class="email-time" :style="(item.unread === EmailUnreadEnum.UNREAD && showUnread) ? 'font-weight: bold' : ''">{{ item.formatCreateTime }}</span>
+                <div v-if="props.type === 'email' && item.attList?.length" class="email-attachments" @click.stop @contextmenu.stop>
+                  <el-popover trigger="click" placement="bottom-end" :width="320"
+                              popper-style="max-width: calc(100vw - 24px)" :title="t('attachments')">
+                    <template #reference>
+                      <button type="button" class="attachment-trigger" :aria-label="t('attachments')" :title="t('attachments')">
+                        <Icon icon="solar:paperclip-rounded-2-linear" width="20" height="20" />
+                      </button>
+                    </template>
+                    <div class="attachment-download-list" @click.stop @contextmenu.stop>
+                      <a v-for="att in item.attList" :key="att.attId" class="attachment-download"
+                         :href="cvtR2Url(att.key)" :download="att.filename" target="_blank" rel="noopener noreferrer"
+                         :title="att.filename">
+                        <Icon v-bind="getIconByName(att.filename)" class="attachment-file-icon" />
+                        <span class="attachment-file-info">
+                          <span class="attachment-filename">{{ att.filename }}</span>
+                          <span class="attachment-size">{{ formatBytes(att.size) }}</span>
+                        </span>
+                        <Icon icon="system-uicons:push-down" width="22" height="22" class="attachment-file-icon" />
+                      </a>
+                    </div>
+                  </el-popover>
+                </div>
               </div>
             </div>
             <skeletonBlock v-else-if="item.expand === 'loading'"
@@ -247,6 +271,9 @@ import {EmailUnreadEnum} from "@/enums/email-enum.js";
 import { UseVirtualList } from '@vueuse/components'
 import { useScroll } from '@vueuse/core'
 import {canComposeFromAllEmail} from "@/utils/all-email-actions.js";
+import {cvtR2Url} from "@/utils/convert.js";
+import {formatBytes} from "@/utils/file-utils.js";
+import {getIconByName} from "@/utils/icon-utils.js";
 
 const props = defineProps({
   getEmailList: Function,
@@ -1229,8 +1256,16 @@ function loadData() {
     display: flex;
     padding-left: 15px;
     align-items: center;
+    flex-shrink: 0;
     @media (max-width: 1366px) {
       display: none;
+      &.has-attachments {
+        display: flex;
+        padding-left: 6px;
+      }
+      .email-time {
+        display: none;
+      }
     }
   }
 
@@ -1277,6 +1312,78 @@ function loadData() {
 
 .email-time {
   padding-right: v-bind(timePaddingRight);
+}
+
+.email-attachments {
+  display: flex;
+  padding-right: 8px;
+}
+
+.attachment-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+
+  &:hover, &:focus-visible {
+    color: var(--el-color-primary);
+    background: var(--el-color-primary-light-9);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: 1px;
+  }
+}
+
+.attachment-download-list {
+  max-height: min(300px, 60vh);
+  overflow-y: auto;
+}
+
+.attachment-download {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--el-text-color-primary);
+  text-decoration: none;
+
+  &:hover, &:focus-visible {
+    background: var(--el-fill-color-light);
+    color: var(--el-color-primary);
+  }
+}
+
+.attachment-file-icon {
+  flex-shrink: 0;
+}
+
+.attachment-file-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.attachment-filename {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.attachment-size {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 :deep(.el-scrollbar__view) {
