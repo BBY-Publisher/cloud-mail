@@ -112,7 +112,6 @@
               <div class="email-right"
                    :class="{ 'has-attachments': props.type === 'email' && item.attList?.length }"
                    :style="showUserInfo ? 'align-self: start;':''">
-                <span class="email-time" :style="(item.unread === EmailUnreadEnum.UNREAD && showUnread) ? 'font-weight: bold' : ''">{{ item.formatCreateTime }}</span>
                 <div v-if="props.type === 'email' && item.attList?.length" class="email-attachments" @click.stop @contextmenu.stop>
                   <el-popover trigger="click" placement="bottom-end" :width="320"
                               popper-style="max-width: calc(100vw - 24px)" :title="t('attachments')">
@@ -135,6 +134,7 @@
                     </div>
                   </el-popover>
                 </div>
+                <span class="email-time" :style="(item.unread === EmailUnreadEnum.UNREAD && showUnread) ? 'font-weight: bold' : ''">{{ item.formatCreateTime }}</span>
               </div>
             </div>
             <skeletonBlock v-else-if="item.expand === 'loading'"
