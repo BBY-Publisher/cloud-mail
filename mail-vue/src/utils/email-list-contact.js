@@ -1,3 +1,17 @@
+export function formatEmailContact(name, address) {
+  const normalizedName = String(name || '').trim()
+  const normalizedAddress = String(address || '').trim()
+
+  if (!normalizedAddress) return normalizedName
+  if (!normalizedName) return normalizedAddress
+
+  const localPart = normalizedAddress.split('@')[0]
+  const hasAlias = normalizedName.toLowerCase() !== localPart.toLowerCase()
+    && normalizedName.toLowerCase() !== normalizedAddress.toLowerCase()
+
+  return hasAlias ? `${normalizedName} (${normalizedAddress})` : normalizedAddress
+}
+
 export function formatRecipientList(recipient, fallback = '') {
   let recipientList = recipient
 
@@ -14,17 +28,21 @@ export function formatRecipientList(recipient, fallback = '') {
   const recipients = recipientList.map(item => {
     if (typeof item === 'string') return item.trim()
 
-    const name = String(item?.name || '').trim()
-    const address = String(item?.address || item?.email || '').trim()
-
-    if (name && address) return `${name} <${address}>`
-    return address || name
+    return formatEmailContact(item?.name, item?.address || item?.email)
   }).filter(Boolean)
 
   return recipients.join(', ') || fallback
 }
 
-export function getEmailListContact(email) {
-  if (Number(email?.type) !== 1) return email?.name || ''
-  return formatRecipientList(email?.recipient, email?.toEmail)
+export function getEmailListContact(email, listType = '') {
+  const sender = formatEmailContact(email?.name, email?.sendEmail)
+  const recipients = formatRecipientList(email?.recipient, email?.toEmail)
+
+  if (listType === 'all-email') return sender
+
+  const contacts = listType === 'send' || (listType === 'star' && Number(email?.type) === 1)
+    ? [recipients, sender]
+    : [sender, recipients]
+
+  return contacts.filter(Boolean).join(' / ')
 }

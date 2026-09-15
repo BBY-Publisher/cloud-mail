@@ -71,7 +71,7 @@
                     <span>
                       <div class="unread" v-if="isMobile && (item.unread === EmailUnreadEnum.UNREAD && showUnread) "/>
                       <slot name="name" :email="item">
-                        {{ getEmailListContact(item) }}
+                        {{ getEmailListContact(item, props.type) }}
                       </slot>
                     </span>
                     <span>
