@@ -70,7 +70,9 @@
                   <span class="name">
                     <span>
                       <div class="unread" v-if="isMobile && (item.unread === EmailUnreadEnum.UNREAD && showUnread) "/>
-                      <slot name="name" :email="item"> {{ item.name }}</slot>
+                      <slot name="name" :email="item">
+                        {{ getEmailListContact(item) }}
+                      </slot>
                     </span>
                     <span>
                       <Icon v-if="item.isStar" icon="fluent-color:star-16" width="18" height="18"/>
@@ -274,6 +276,7 @@ import {canComposeFromAllEmail} from "@/utils/all-email-actions.js";
 import {cvtR2Url} from "@/utils/convert.js";
 import {formatBytes} from "@/utils/file-utils.js";
 import {getIconByName} from "@/utils/icon-utils.js";
+import {getEmailListContact} from "@/utils/email-list-contact.js";
 
 const props = defineProps({
   getEmailList: Function,
