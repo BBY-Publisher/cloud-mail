@@ -5,15 +5,27 @@
       <span class="email">{{ currentEmail || $t('switchMailboxHint') }}</span>
     </div>
     <div class="header-actions">
-      <Icon class="icon" icon="material-symbols-light:arrow-back-ios-new" width="20" height="20" @click="handleBack"/>
-      <Icon v-perm="'email:delete'" class="icon" icon="uiw:delete" width="16" height="16" @click="handleDelete"/>
+      <el-tooltip :content="t('back')" placement="bottom">
+        <Icon class="icon" icon="material-symbols-light:arrow-back-ios-new" width="20" height="20" :aria-label="t('back')" @click="handleBack"/>
+      </el-tooltip>
+      <el-tooltip :content="t('delete')" placement="bottom">
+        <Icon v-perm="'email:delete'" class="icon" icon="uiw:delete" width="16" height="16" :aria-label="t('delete')" @click="handleDelete"/>
+      </el-tooltip>
       <span class="star" v-if="emailStore.contentData.showStar">
-        <Icon class="icon" @click="changeStar" v-if="email.isStar" icon="fluent-color:star-16" width="20" height="20"/>
-        <Icon class="icon" @click="changeStar" v-else icon="solar:star-line-duotone" width="18" height="18"/>
+        <el-tooltip :content="t(email.isStar ? 'unstar' : 'star')" placement="bottom">
+          <Icon class="icon" @click="changeStar" v-if="email.isStar" icon="fluent-color:star-16" width="20" height="20" :aria-label="t('unstar')"/>
+          <Icon class="icon" @click="changeStar" v-else icon="solar:star-line-duotone" width="18" height="18" :aria-label="t('star')"/>
+        </el-tooltip>
       </span>
-      <Icon class="icon" v-if="emailStore.contentData.showReply" v-perm="'email:send'"  @click="openReply" icon="la:reply" width="21" height="21" />
-      <el-button class="reply-all" v-if="emailStore.contentData.showReply && getCcAddresses(email.cc).length > 0" v-perm="'email:send'" text size="small" @click="openReplyAll">{{ t('replyAll') }}</el-button>
-      <Icon class="icon" v-if="emailStore.contentData.showReply" v-perm="'email:send'"  @click="openForward" icon="iconoir:arrow-up-right" width="20" height="20" />
+      <el-tooltip v-if="emailStore.contentData.showReply" :content="t('reply')" placement="bottom">
+        <Icon class="icon" v-perm="'email:send'" @click="openReply" icon="la:reply" width="21" height="21" :aria-label="t('reply')" />
+      </el-tooltip>
+      <el-tooltip v-if="emailStore.contentData.showReply && getCcAddresses(email.cc).length > 0" :content="t('replyAll')" placement="bottom">
+        <Icon class="icon reply-all" v-perm="'email:send'" @click="openReplyAll" icon="la:reply-all" width="21" height="21" :aria-label="t('replyAll')" />
+      </el-tooltip>
+      <el-tooltip v-if="emailStore.contentData.showReply" :content="t('forward')" placement="bottom">
+        <Icon class="icon" v-perm="'email:send'" @click="openForward" icon="iconoir:arrow-up-right" width="20" height="20" :aria-label="t('forward')" />
+      </el-tooltip>
     </div>
     <div></div>
     <el-scrollbar class="scrollbar">

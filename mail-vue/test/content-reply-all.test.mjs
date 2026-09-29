@@ -64,7 +64,12 @@ function mountContent(cc, { showReply = true, canSend = true } = {}) {
         user: { permKeys: canSend ? ['email:send'] : [] },
     })));
     app.component('el-scrollbar', Widget);
-    app.component('el-button', { setup(_, { slots }) { return () => Vue.h('button', slots.default?.()); } });
+    app.component('el-tooltip', {
+        props: ['content'],
+        setup(props, { slots }) {
+            return () => Vue.cloneVNode(slots.default()[0], { 'data-tooltip-content': props.content });
+        },
+    });
     app.component('el-alert', Widget);
     app.component('el-image-viewer', Widget);
     const root = document.createElement('div');
@@ -91,7 +96,9 @@ test('reply all appears beside reply and opens the reply all composer for the se
         const view = mountContent(cc);
         try {
             const button = view.root.querySelector('.reply-all');
-            assert.equal(button.textContent, 'reply all');
+            assert.equal(button.textContent, '');
+            assert.equal(button.getAttribute('data-icon'), 'la:reply-all');
+            assert.equal(button.getAttribute('data-tooltip-content'), 'reply all');
             assert.equal(button.previousElementSibling.getAttribute('data-icon'), 'la:reply');
             assert.equal(button.nextElementSibling.getAttribute('data-icon'), 'iconoir:arrow-up-right');
             button.click();
