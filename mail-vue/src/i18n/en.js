@@ -212,6 +212,7 @@ const en = {
     changeUserName: 'Change Username',
     send: 'Send',
     reply: 'Reply',
+    replyAll: 'reply all',
     forward: 'Forward',
     includeSignature: 'Include signature',
     signaturePreview: 'Message Preview',

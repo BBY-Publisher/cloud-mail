@@ -214,10 +214,12 @@ import {signatureGet} from "@/request/signature.js";
 import {useSignatureStore} from "@/store/signature.js";
 import {classifyComposeFiles, isImageUpload} from "@/utils/compose-upload.js";
 import {toForwardAttachments} from "@/utils/forward-attachments.js";
+import {getCcAddresses} from "@/utils/reply-recipients.js";
 
 defineExpose({
   open,
   openReply,
+  openReplyAll,
   openForward,
   openDraft
 })
@@ -799,6 +801,8 @@ function resetForm() {
   backReply.content = ''
   backReply.subject = ''
   backReply.receiveEmail = []
+  backReply.cc = []
+  backReply.bcc = []
   backReply.sendType = ''
   backReply.attachments = '[]'
   editor.value.clearEditor()
@@ -866,13 +870,21 @@ function openForward(email) {
   });
 }
 
-function openReply(email) {
+function openReplyAll(email) {
+  openReply(email, true)
+}
+
+function openReply(email, replyAll = false) {
 
   resetForm();
 
   email.subject = email.subject || ''
 
   form.receiveEmail.push(email.sendEmail)
+  if (replyAll) {
+    form.cc = getCcAddresses(email.cc)
+    showCc.value = form.cc.length > 0
+  }
   form.subject = (
       email.subject.startsWith('Re:') ||
       email.subject.startsWith('Re：') ||
@@ -904,6 +916,8 @@ function openReply(email) {
       backReply.receiveEmail = form.receiveEmail
       backReply.sendType = form.sendType
       backReply.attachments = JSON.stringify(form.attachments)
+      backReply.cc = [...form.cc]
+      backReply.bcc = [...form.bcc]
     })
   })
 

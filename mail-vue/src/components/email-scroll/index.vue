@@ -205,6 +205,14 @@
               </div>
             </template>
           </el-dropdown-item>
+          <el-dropdown-item v-perm="'email:send'" v-if="canReplyOrForward(rightClickEmail, false) && getCcAddresses(rightClickEmail.cc).length > 0" @click="openReplyAll(rightClickEmail)">
+            <template #default>
+              <div class="right-dropdown-item">
+                <Icon icon="la:reply-all" width="20" height="20" />
+                <span>{{t('replyAll')}}</span>
+              </div>
+            </template>
+          </el-dropdown-item>
           <el-dropdown-item v-perm="'email:send'" v-if="canReplyOrForward(rightClickEmail, true)" @click="openForward(rightClickEmail)">
             <template #default>
               <div class="right-dropdown-item">
@@ -277,6 +285,7 @@ import {cvtR2Url} from "@/utils/convert.js";
 import {formatBytes} from "@/utils/file-utils.js";
 import {getIconByName} from "@/utils/icon-utils.js";
 import {getEmailListContact} from "@/utils/email-list-contact.js";
+import {getCcAddresses} from "@/utils/reply-recipients.js";
 
 const props = defineProps({
   getEmailList: Function,
@@ -519,6 +528,10 @@ window.addEventListener('wheel', (event) => {
 
 function openReply(email) {
   uiStore.writerRef.openReply(email)
+}
+
+function openReplyAll(email) {
+  uiStore.writerRef.openReplyAll(email)
 }
 
 function openForward(email) {

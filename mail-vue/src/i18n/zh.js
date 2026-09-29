@@ -212,6 +212,7 @@ const zh = {
     changeUserName: '修改用户名',
     send: '发送',
     reply: '回复',
+    replyAll: '回复全部',
     forward: '转发',
     includeSignature: '带上签名',
     signaturePreview: '邮件预览',
