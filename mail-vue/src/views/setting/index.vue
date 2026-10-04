@@ -68,7 +68,7 @@
   </div>
 </template>
 <script setup>
-import {reactive, ref, defineOptions} from 'vue'
+import {computed, reactive, ref, defineOptions} from 'vue'
 import {resetPassword, userDelete} from "@/request/my.js";
 import {useUserStore} from "@/store/user.js";
 import router from "@/router/index.js";
@@ -84,7 +84,7 @@ const userStore = useUserStore();
 const setPwdLoading = ref(false)
 const setNameShow = ref(false)
 const accountName = ref(null)
-const langSelect = ref(settingStore.lang)
+const langSelect = computed(() => settingStore.lang)
 
 defineOptions({
   name: 'setting'

@@ -107,3 +107,23 @@ test('reply all appears beside reply and opens the reply all composer for the se
         } finally { view.unmount(); }
     }
 });
+
+test('CC addresses appear directly below the recipient only when present', () => {
+    for (const cc of [undefined, '[]', 'invalid JSON']) {
+        const view = mountContent(cc);
+        try { assert.equal(view.root.querySelector('.receive.cc'), null); }
+        finally { view.unmount(); }
+    }
+
+    for (const cc of ['[{"address":"first@example.com"},{"address":"second@example.com"}]',
+        [{ address: 'first@example.com' }, { address: 'second@example.com' }]]) {
+        const view = mountContent(cc);
+        try {
+            const recipient = view.root.querySelector('.receive');
+            const ccRow = view.root.querySelector('.receive.cc');
+            assert.equal(recipient.nextElementSibling, ccRow);
+            assert.equal(ccRow.querySelector('.source').textContent, 'Cc');
+            assert.equal(ccRow.querySelector('.receive-email').textContent, 'first@example.com, second@example.com');
+        } finally { view.unmount(); }
+    }
+});

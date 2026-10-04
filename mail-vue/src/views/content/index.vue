@@ -20,7 +20,7 @@
       <el-tooltip v-if="emailStore.contentData.showReply" :content="t('reply')" placement="bottom">
         <Icon class="icon" v-perm="'email:send'" @click="openReply" icon="la:reply" width="21" height="21" :aria-label="t('reply')" />
       </el-tooltip>
-      <el-tooltip v-if="emailStore.contentData.showReply && getCcAddresses(email.cc).length > 0" :content="t('replyAll')" placement="bottom">
+      <el-tooltip v-if="emailStore.contentData.showReply && ccAddresses.length" :content="t('replyAll')" placement="bottom">
         <Icon class="icon reply-all" v-perm="'email:send'" @click="openReplyAll" icon="la:reply-all" width="21" height="21" :aria-label="t('replyAll')" />
       </el-tooltip>
       <el-tooltip v-if="emailStore.contentData.showReply" :content="t('forward')" placement="bottom">
@@ -43,6 +43,7 @@
                 </div>
               </div>
               <div class="receive"><span class="source">{{$t('recipient')}}</span><span class="receive-email">{{  formateReceive(email.recipient) }}</span></div>
+              <div v-if="ccAddresses.length" class="receive cc"><span class="source">{{$t('cc')}}</span><span class="receive-email">{{ ccAddresses.join(', ') }}</span></div>
               <div class="date">
                 <div>{{ formatDetailDate(email.createTime) }}</div>
               </div>
@@ -118,6 +119,7 @@ const accountStore = useAccountStore();
 const emailStore = useEmailStore();
 const router = useRouter()
 const email = emailStore.contentData.email
+const ccAddresses = computed(() => getCcAddresses(email.cc))
 const showPreview = ref(false)
 const srcList = reactive([])
 
