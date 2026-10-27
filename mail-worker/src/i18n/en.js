@@ -25,7 +25,7 @@ const en = {
 	sendEmailNotCurUser: 'Sender email does not belong to current user',
 	notExistEmailReply: 'Mail does not exist and cannot be replied to',
 	imageAttLimit: 'The maximum number of image attachments is 50',
-	attLimit: 'The maximum number of attachments is 10.',
+	attLimit: 'The maximum number of attachments is {{max}}.',
 	pwdLengthLimit: 'Password length exceeds the limit',
 	emailLengthLimit: 'Email length exceeds the limit',
 	minEmailPrefix: 'Email must be at least {{msg}} characters',

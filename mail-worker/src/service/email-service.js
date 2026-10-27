@@ -48,6 +48,7 @@ import {
 } from '../utils/attachment-email-utils';
 import attachmentUploadService from './attachment-upload-service';
 import { MAX_INLINE_IMAGES } from './att-service';
+import { MAX_ATTACHMENT_COUNT } from '../const/attachment-const';
 import forwardAttachmentService from './forward-attachment-service';
 
 const PROVIDER = {
@@ -237,8 +238,8 @@ const emailService = {
 			attachments = [] //附件
 		} = params;
 
-		if (!Array.isArray(attachments) || attachments.length > 10) {
-			throw new BizError(t('attLimit'));
+		if (!Array.isArray(attachments) || attachments.length > MAX_ATTACHMENT_COUNT) {
+			throw new BizError(t('attLimit', { max: MAX_ATTACHMENT_COUNT }));
 		}
 		const inheritsAttachments = sendType === 'forward' || sendType === 'reply';
 		const invalidAttachment = findInvalidAttachment(attachments.filter(attachment =>

@@ -2,6 +2,9 @@ import { getExtName } from './file-utils.js'
 
 export const MAX_COMPOSE_FILE_SIZE = 64 * 1024 * 1024
 
+// 单封邮件允许添加的普通附件数量上限，与后端 mail-worker 的附件数量校验保持一致。
+export const MAX_COMPOSE_ATTACHMENTS = 64
+
 const IMAGE_EXTENSIONS = new Set([
     'avif',
     'bmp',

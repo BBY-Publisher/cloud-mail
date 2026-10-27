@@ -212,7 +212,7 @@ import router from "@/router/index.js";
 import {ElMessageBox} from "element-plus";
 import {signatureGet} from "@/request/signature.js";
 import {useSignatureStore} from "@/store/signature.js";
-import {classifyComposeFiles, isImageUpload} from "@/utils/compose-upload.js";
+import {classifyComposeFiles, isImageUpload, MAX_COMPOSE_ATTACHMENTS} from "@/utils/compose-upload.js";
 import {toForwardAttachments} from "@/utils/forward-attachments.js";
 import {getCcAddresses} from "@/utils/reply-recipients.js";
 
@@ -502,7 +502,7 @@ function notifyRejectedFiles(rejected) {
 function notifyAttachmentLimit(count) {
   if (count <= 0) return
   ElMessage({
-    message: t('attachmentCountLimit', {count}),
+    message: t('attachmentCountLimit', {count, max: MAX_COMPOSE_ATTACHMENTS}),
     type: 'warning',
     plain: true,
   })
@@ -545,7 +545,7 @@ function notifyUploadFailure(file, error) {
 }
 
 async function addLegacyAttachments(files) {
-  const remaining = Math.max(0, 10 - form.attachments.length)
+  const remaining = Math.max(0, MAX_COMPOSE_ATTACHMENTS - form.attachments.length)
   const selected = files.slice(0, remaining)
   notifyAttachmentLimit(files.length - selected.length)
 
@@ -597,7 +597,7 @@ async function handleSelectedFiles(files) {
     return
   }
 
-  let attachmentSlots = Math.max(0, 10 - form.attachments.length)
+  let attachmentSlots = Math.max(0, MAX_COMPOSE_ATTACHMENTS - form.attachments.length)
   for (const file of accepted) {
     if (isImageUpload(file)) {
       try {
@@ -1155,6 +1155,11 @@ function close() {
       gap: 15px;
       overflow: scroll;
 
+      @media (max-width: 767px) {
+        // 给底部固定的操作栏留出空间，避免最后一行内容被遮挡
+        padding-bottom: 66px;
+      }
+
       .item-title {
       }
 
@@ -1218,8 +1223,19 @@ function close() {
             display: none;
           }
 
+          // 手机端把预览/发送按钮固定在屏幕底部，方便单手操作
           .send-actions {
-            grid-column: 1 / -1;
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 30;
+            margin: 0;
+            padding: 10px 12px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+            background: var(--el-bg-color);
+            border-top: 1px solid var(--el-border-color-lighter);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
             justify-content: flex-end;
           }
         }
