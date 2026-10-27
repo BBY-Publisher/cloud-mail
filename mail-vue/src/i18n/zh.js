@@ -274,7 +274,7 @@ const zh = {
     sendingErrorMsg: '邮件正在发送中',
     dropFilesHere: '释放文件以上传',
     fileTooLarge64: '已跳过 {count} 个文件，单个文件必须大于 0 且不能超过 64 MB',
-    attachmentCountLimit: '已跳过 {count} 个文件，每封邮件最多添加 10 个普通附件',
+    attachmentCountLimit: '已跳过 {count} 个文件，每封邮件最多添加 {max} 个普通附件',
     fileUploadFailedTitle: '文件上传失败',
     fileUploadFailed: '{name} 上传失败：{message}',
     uploadingFiles: '文件正在上传，请稍候',

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+    MAX_COMPOSE_ATTACHMENTS,
     MAX_COMPOSE_FILE_SIZE,
     classifyComposeFiles,
     isImageUpload
@@ -34,4 +35,8 @@ test('compose uploads reject empty files and missing file records', () => {
         accepted: [],
         rejected: [empty]
     })
+})
+
+test('compose uploads allow up to 64 regular attachments per email', () => {
+    assert.equal(MAX_COMPOSE_ATTACHMENTS, 64)
 })

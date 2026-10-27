@@ -274,7 +274,7 @@ const en = {
     sendingErrorMsg: 'Sending in progress',
     dropFilesHere: 'Drop files to upload',
     fileTooLarge64: 'Skipped {count} file(s). Each file must be larger than 0 and no more than 64 MB',
-    attachmentCountLimit: 'Skipped {count} file(s). Each email supports up to 10 regular attachments',
+    attachmentCountLimit: 'Skipped {count} file(s). Each email supports up to {max} regular attachments',
     fileUploadFailedTitle: 'File upload failed',
     fileUploadFailed: 'Could not upload {name}: {message}',
     uploadingFiles: 'Files are still uploading. Please wait',
